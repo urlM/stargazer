@@ -1,50 +1,32 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Repository List | Stargazer{% endblock %}
+{% block title %}Top PHP Repositories{% endblock %}
 
 {% block body %}
-    <main class="shell">
-        <p class="eyebrow">Persistence Slice</p>
-        <h1>Top PHP repositories from the local database</h1>
-        <p>
-            Slice 2 is now reading through Doctrine. Once the GitHub sync workflow lands, this
-            list will be refreshed from the API and kept sorted by star count.
-        </p>
+<div class="container">
+    <h1>Top Starred PHP Repositories</h1>
 
-        {% if repositories is empty %}
-            <section class="empty-state">
-                <p><strong>No repositories have been stored yet.</strong></p>
-                <p>
-                    Run <code>docker-compose exec php php bin/console app:repositories:seed-demo</code>
-                    to load mock data and verify the persistence flow.
-                </p>
-            </section>
-        {% else %}
-            <table>
-                <thead>
-                    <tr>
-                        <th scope="col">Repository</th>
-                        <th scope="col">Stars</th>
-                        <th scope="col">Synced</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for repository in repositories %}
-                        <tr>
-                            <td>
-                                <strong>{{ repository.name }}</strong><br>
-                                {% if repository.description %}
-                                    {{ repository.description }}
-                                {% else %}
-                                    <span>No description provided.</span>
-                                {% endif %}
-                            </td>
-                            <td class="stars">{{ repository.stars|number_format }}</td>
-                            <td>{{ repository.syncedAt|date('Y-m-d H:i') }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-    </main>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Repository Name</th>
+                <th>Stars</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for repo in repositories %}
+                <tr>
+                    <td>
+                        <a href="{{ repo.url }}" target="_blank">{{ repo.name }}</a>
+                    </td>
+                    <td>{{ repo.stars|number_format }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="2">No repositories found in the database. Please run a sync.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}
