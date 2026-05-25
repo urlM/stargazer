@@ -25,3 +25,9 @@ db_data/
 /phpunit.xml
 /.phpunit.cache/
 ###< phpunit/phpunit ###
+
+# Ignore .github subdirectories but not the top-level .github directory
+/.github/agents/
+/.github/governance/
+/.github/prompts/
+/.github/workflows/
