@@ -2,13 +2,15 @@
 docs
 memory-bank
 
-# Local environment overrides
-.env.local
-.env.*.local
-
-# Symfony runtime files
+###> symfony/framework-bundle ###
+/.env.local
+/.env.local.php
+/.env.*.local
+/config/secrets/prod/prod.decrypt.private.php
+/public/bundles/
 /var/
 /vendor/
+###< symfony/framework-bundle ###
 
 # IDE and OS noise
 .idea/
@@ -18,3 +20,8 @@ Desktop.ini
 
 # Docker data
 db_data/
+
+###> phpunit/phpunit ###
+/phpunit.xml
+/.phpunit.cache/
+###< phpunit/phpunit ###

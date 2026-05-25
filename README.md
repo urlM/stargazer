@@ -4,21 +4,23 @@ Bootstrap for a Symfony-based GitHub repository browser focused on top-starred p
 
 ## Current status
 
-Slice 1 is in progress. The repository now includes:
+Slice 1 is now scaffolded and runnable. The repository includes:
 
 - a `php:8.3-fpm` Docker image
 - an `nginx` + `php` + `mariadb` Compose stack
-- nginx routing aimed at `public/index.php`
+- a Symfony 7.4 application scaffold
+- Twig, Doctrine ORM, Doctrine Migrations, HttpClient, Monolog, and test tooling
+- a minimal Symfony landing page served through nginx
 - baseline environment defaults in `.env`
-- a temporary PHP landing page for startup validation
 
-The next blocking step is scaffolding the real Symfony 7.4 application and installing its dependencies.
+The next implementation step is the repository domain and persistence slice.
 
 ## First run
 
 1. Start Docker Desktop.
 2. From the repo root, run `docker compose up --build`.
 3. Open `http://localhost:8080`.
+4. Verify the app container with `docker compose exec php php bin/console about`.
 
 ## Local overrides
 
@@ -32,10 +34,9 @@ Create `.env.local` for machine-specific overrides such as:
 
 ## Planned next step
 
-Once Docker is available for package installation, scaffold Symfony 7.4 and add the baseline bundles:
+Build the persistence slice:
 
-- Twig
-- Doctrine ORM
-- Doctrine Migrations
-- Symfony HttpClient
-- test tooling
+- add the `Repository` entity
+- create the first Doctrine migration
+- implement the repository query layer
+- render a DB-backed list page
