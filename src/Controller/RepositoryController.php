@@ -28,7 +28,9 @@ final class RepositoryController extends AbstractController
         $repository = $repositoryRepository->find($id);
 
         if ($repository === null) {
-            throw $this->createNotFoundException(sprintf('Repository with id "%s" was not found.', $id));
+            return $this->render('repository/not_found.html.twig', [
+                'repositoryId' => $id,
+            ], new Response(status: Response::HTTP_NOT_FOUND));
         }
 
         return $this->render('repository/show.html.twig', [

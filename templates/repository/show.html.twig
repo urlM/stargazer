@@ -1,9 +1,10 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}{{ repository.name }}{% endblock %}
+{% block title %}{{ repository.name }} | Stargazer{% endblock %}
 
 {% block body %}
 <div class="container my-4">
+    <p><a href="{{ path('app_repository_index') }}">Back to repository list</a></p>
     <h1 class="mb-3">{{ repository.name }}</h1>
 
     <p class="mb-4">

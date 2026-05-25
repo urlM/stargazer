@@ -1,0 +1,11 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Repository Not Found | Stargazer{% endblock %}
+
+{% block body %}
+<div class="container my-4">
+    <h1>Repository not found</h1>
+    <p>We could not find a repository with id <code>{{ repositoryId }}</code>.</p>
+    <p><a href="{{ path('app_repository_index') }}">Back to repository list</a></p>
+</div>
+{% endblock %}
