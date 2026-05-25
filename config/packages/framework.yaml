@@ -2,3 +2,7 @@ framework:
     # Enabling CSRF protection ensures the "csrf_token" Twig function is registered.
     csrf_protection:
         enabled: true
+    session:
+        storage_factory_id: session.storage.factory.native
+        cookie_secure: auto
+        cookie_samesite: lax
