@@ -8,15 +8,17 @@ use App\Entity\Repository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 
 final class RepositoryDetailWorkflowTest extends WebTestCase
 {
     private EntityManagerInterface $entityManager;
+    private KernelBrowser $client;
 
     protected function setUp(): void
     {
         self::ensureKernelShutdown();
-        self::bootKernel();
+        $this->client = static::createClient();
 
         $this->entityManager = static::getContainer()->get(EntityManagerInterface::class);
         $schemaTool = new SchemaTool($this->entityManager);
@@ -48,8 +50,7 @@ final class RepositoryDetailWorkflowTest extends WebTestCase
         $this->entityManager->persist($repository);
         $this->entityManager->flush();
 
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/repository/458058');
+        $crawler = $this->client->request('GET', '/repository/458058');
 
         self::assertResponseIsSuccessful();
         self::assertSame('symfony/symfony | Stargazer', $crawler->filter('title')->text());
@@ -58,8 +59,7 @@ final class RepositoryDetailWorkflowTest extends WebTestCase
 
     public function testRepositoryDetailPageReturnsGraceful404WhenMissing(): void
     {
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/repository/999999999');
+        $crawler = $this->client->request('GET', '/repository/999999999');
 
         self::assertResponseStatusCodeSame(404);
         self::assertSame('Repository Not Found | Stargazer', $crawler->filter('title')->text());
