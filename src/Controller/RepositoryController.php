@@ -22,6 +22,20 @@ final class RepositoryController extends AbstractController
         ]);
     }
 
+    #[Route('/repository/{id}', name: 'app_repository_show', methods: ['GET'], requirements: ['id' => '\d+'])]
+    public function show(string $id, RepositoryRepository $repositoryRepository): Response
+    {
+        $repository = $repositoryRepository->find($id);
+
+        if ($repository === null) {
+            throw $this->createNotFoundException(sprintf('Repository with id "%s" was not found.', $id));
+        }
+
+        return $this->render('repository/show.html.twig', [
+            'repository' => $repository,
+        ]);
+    }
+
     #[Route('/refresh', name: 'app_repository_refresh', methods: ['POST'])]
     public function refresh(
         Request $request,

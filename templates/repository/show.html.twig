@@ -1,0 +1,29 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ repository.name }}{% endblock %}
+
+{% block body %}
+<div class="container my-4">
+    <h1 class="mb-3">{{ repository.name }}</h1>
+
+    <p class="mb-4">
+        {{ repository.description ?: 'No description provided.' }}
+    </p>
+
+    <dl class="row">
+        <dt class="col-sm-3">GitHub URL</dt>
+        <dd class="col-sm-9">
+            <a href="{{ repository.url }}" target="_blank" rel="noopener noreferrer">{{ repository.url }}</a>
+        </dd>
+
+        <dt class="col-sm-3">Created Date</dt>
+        <dd class="col-sm-9">{{ repository.createdAt|date('Y-m-d H:i') }}</dd>
+
+        <dt class="col-sm-3">Last Pushed Date</dt>
+        <dd class="col-sm-9">{{ repository.pushedAt|date('Y-m-d H:i') }}</dd>
+
+        <dt class="col-sm-3">Stars</dt>
+        <dd class="col-sm-9">{{ repository.stars|number_format }}</dd>
+    </dl>
+</div>
+{% endblock %}
