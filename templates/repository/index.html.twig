@@ -32,7 +32,7 @@
             {% for repo in repositories %}
                 <tr>
                     <td>
-                        <a href="{{ repo.url }}" target="_blank">{{ repo.name }}</a>
+                        <a href="{{ path('app_repository_show', {id: repo.id}) }}">{{ repo.name }}</a>
                     </td>
                     <td>{{ repo.stars|number_format }}</td>
                 </tr>
