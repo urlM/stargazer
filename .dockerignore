@@ -1,0 +1,9 @@
+.git
+.codex
+docs
+memory-bank
+var
+vendor
+node_modules
+db_data
+

@@ -1,3 +1,20 @@
 .codex
 docs
 memory-bank
+
+# Local environment overrides
+.env.local
+.env.*.local
+
+# Symfony runtime files
+/var/
+/vendor/
+
+# IDE and OS noise
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+
+# Docker data
+db_data/
