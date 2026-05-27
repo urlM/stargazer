@@ -1,8 +1,20 @@
+# see https://symfony.com/doc/current/reference/configuration/framework.html
 framework:
-    # Enabling CSRF protection ensures the "csrf_token" Twig function is registered.
-    csrf_protection:
-        enabled: true
+    secret: '%env(APP_SECRET)%'
+    annotations: false
+    http_method_override: false
+    handle_all_throwables: true
+
     session:
-        storage_factory_id: session.storage.factory.native
+        handler_id: null
         cookie_secure: auto
         cookie_samesite: lax
+
+    php_errors:
+        log: true
+
+when@test:
+    framework:
+        test: true
+        session:
+            storage_factory_id: session.storage.factory.mock_file
