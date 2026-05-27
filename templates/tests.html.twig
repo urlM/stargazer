@@ -1,0 +1,17 @@
+{% extends 'base.html.twig' %}
+{% block body %}
+    <h1>List of test entities</h1>
+    <div class="my-3">
+        <form method="POST" action="{{ path('test_add') }}" class="d-inline-block">
+            <button class="btn btn-primary">Add</button>
+        </form>
+        <form method="POST" action="{{ path('test_clear') }}" class="d-inline-block">
+            <button class="btn btn-danger">Clear</button>
+        </form>
+    </div>
+    <ol>
+    {% for test in tests %}
+        <li>{{ test.nameAndDescription }}</li>
+    {% endfor %}
+    </ol>
+{% endblock %}
