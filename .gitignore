@@ -31,3 +31,5 @@ db_data/
 /.github/governance/
 /.github/prompts/
 /.github/workflows/
+/.github/copilot-instructions.md
+/.github/flow-guardrails.md

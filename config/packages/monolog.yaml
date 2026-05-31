@@ -1,15 +1,32 @@
 monolog:
     channels:
         - deprecation # Deprecations are logged in the dedicated "deprecation" channel when it exists
+    handlers:
+        main:
+            type: stream
+            path: php://stdout
+            level: debug
+            channels: ["!event"]
+            formatter: monolog.formatter.json
+        console:
+            type: console
+            process_psr_3_messages: false
+            channels: ["!event", "!doctrine", "!console"]
+        deprecation:
+            type: stream
+            channels: [deprecation]
+            path: php://stdout
+            formatter: monolog.formatter.json
 
 when@dev:
     monolog:
         handlers:
             main:
                 type: stream
-                path: "%kernel.logs_dir%/%kernel.environment%.log"
+                path: php://stdout
                 level: debug
                 channels: ["!event"]
+                formatter: monolog.formatter.json
             console:
                 type: console
                 process_psr_3_messages: false
@@ -26,8 +43,9 @@ when@test:
                 channels: ["!event"]
             nested:
                 type: stream
-                path: "%kernel.logs_dir%/%kernel.environment%.log"
+                path: php://stdout
                 level: debug
+                formatter: monolog.formatter.json
 
 when@prod:
     monolog:
@@ -40,7 +58,7 @@ when@prod:
                 buffer_size: 50 # How many messages should be saved? Prevent memory leaks
             nested:
                 type: stream
-                path: php://stderr
+                path: php://stdout
                 level: debug
                 formatter: monolog.formatter.json
             console:
@@ -50,5 +68,5 @@ when@prod:
             deprecation:
                 type: stream
                 channels: [deprecation]
-                path: php://stderr
+                path: php://stdout
                 formatter: monolog.formatter.json
