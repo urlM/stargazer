@@ -27,16 +27,16 @@ final class RepositoryQueryBuilder
      * @param string|null $search        Optional search query (searches in name and description).
      * @param string      $sortBy        Field to sort by ('stars', 'created_at', 'pushed_at', 'name').
      * @param string      $sortDirection Sort direction ('ASC' or 'DESC').
-     *
-     * @return QueryBuilder The configured query builder.
+     * @param list<string>|null $repositoryIds
      */
     public function createListQueryBuilder(
         ?string $search = null,
         string $sortBy = 'stars',
         string $sortDirection = 'DESC',
         ?ResolvedStarRangeScope $scope = null,
+        ?array $repositoryIds = null,
     ): QueryBuilder {
-        $qb = $this->createBaseQueryBuilder($search, $scope);
+        $qb = $this->createBaseQueryBuilder($search, $scope, $repositoryIds);
 
         return $this->applySorting($qb, $sortBy, $sortDirection)
             ->select('repository');
@@ -45,15 +45,16 @@ final class RepositoryQueryBuilder
     /**
      * Creates a lightweight query builder for repository list rows.
      *
-     * @return QueryBuilder The configured query builder returning scalar list fields.
+     * @param list<string>|null $repositoryIds
      */
     public function createListItemsQueryBuilder(
         ?string $search = null,
         string $sortBy = 'stars',
         string $sortDirection = 'DESC',
         ?ResolvedStarRangeScope $scope = null,
+        ?array $repositoryIds = null,
     ): QueryBuilder {
-        $qb = $this->createBaseQueryBuilder($search, $scope);
+        $qb = $this->createBaseQueryBuilder($search, $scope, $repositoryIds);
 
         return $this->applySorting($qb, $sortBy, $sortDirection)
             ->select('repository.id AS id', 'repository.name AS name', 'repository.stars AS stars');
@@ -73,24 +74,87 @@ final class RepositoryQueryBuilder
         ?ResolvedStarRangeScope $scope = null,
         ?int $maxRepositories = null,
     ): array {
-        $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $maxRepositories);
+        $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $scope, $maxRepositories);
         if ($effectiveLimit === 0) {
             return [];
         }
 
-        return $this->createListItemsQueryBuilder($search, $sortBy, $sortDirection, $scope)
+        return $this->createListItemsQueryBuilder(
+            $search,
+            $sortBy,
+            $sortDirection,
+            $scope,
+            $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
+        )
             ->setMaxResults($effectiveLimit)
             ->setFirstResult($offset)
             ->getQuery()
             ->getArrayResult();
     }
 
-    private function createBaseQueryBuilder(?string $search = null, ?ResolvedStarRangeScope $scope = null): QueryBuilder
-    {
+    /**
+     * Finds repositories by list criteria.
+     *
+     * @return list<Repository>
+     */
+    public function findRepositories(
+        ?string $search = null,
+        string $sortBy = 'stars',
+        string $sortDirection = 'DESC',
+        int $limit = 100,
+        int $offset = 0,
+        ?ResolvedStarRangeScope $scope = null,
+        ?int $maxRepositories = null,
+    ): array {
+        $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $scope, $maxRepositories);
+        if ($effectiveLimit === 0) {
+            return [];
+        }
+
+        return $this->createListQueryBuilder(
+            $search,
+            $sortBy,
+            $sortDirection,
+            $scope,
+            $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
+        )
+            ->setMaxResults($effectiveLimit)
+            ->setFirstResult($offset)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Counts repositories matching the given criteria.
+     */
+    public function countRepositories(
+        ?string $search = null,
+        ?ResolvedStarRangeScope $scope = null,
+        ?int $maxRepositories = null,
+    ): int {
+        return (int) $this->createBaseQueryBuilder(
+            $search,
+            $scope,
+            $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
+        )
+            ->select('COUNT(repository.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * @param list<string>|null $repositoryIds
+     */
+    private function createBaseQueryBuilder(
+        ?string $search = null,
+        ?ResolvedStarRangeScope $scope = null,
+        ?array $repositoryIds = null,
+    ): QueryBuilder {
         $qb = $this->entityManager->createQueryBuilder()
             ->from(Repository::class, 'repository');
 
         $this->applyScope($qb, $scope);
+        $this->applyRepositoryIds($qb, $repositoryIds);
 
         if ($search === null) {
             return $qb;
@@ -126,6 +190,25 @@ final class RepositoryQueryBuilder
         }
     }
 
+    /**
+     * @param list<string>|null $repositoryIds
+     */
+    private function applyRepositoryIds(QueryBuilder $qb, ?array $repositoryIds): void
+    {
+        if ($repositoryIds === null) {
+            return;
+        }
+
+        if ($repositoryIds === []) {
+            $qb->andWhere('1 = 0');
+
+            return;
+        }
+
+        $qb->andWhere('repository.id IN (:scoped_repository_ids)')
+            ->setParameter('scoped_repository_ids', $repositoryIds);
+    }
+
     private function applySorting(QueryBuilder $qb, string $sortBy, string $sortDirection): QueryBuilder
     {
         if (!in_array($sortBy, self::VALID_SORT_FIELDS, true)) {
@@ -136,7 +219,6 @@ final class RepositoryQueryBuilder
 
         $qb->orderBy("repository.{$sortBy}", $validSortDirection);
 
-        // Add secondary sort by ID for consistent ordering
         if ($sortBy !== 'id') {
             $qb->addOrderBy('repository.id', 'ASC');
         }
@@ -145,67 +227,44 @@ final class RepositoryQueryBuilder
     }
 
     /**
-     * Finds repositories by list criteria.
-     *
-     * @param string|null $search        Optional search query.
-     * @param string      $sortBy        Field to sort by.
-     * @param string      $sortDirection Sort direction.
-     * @param int         $limit         Maximum results.
-     * @param int         $offset        Pagination offset.
-     *
-     * @return list<Repository>
+     * @return list<string>|null
      */
-    public function findRepositories(
-        ?string $search = null,
-        string $sortBy = 'stars',
-        string $sortDirection = 'DESC',
-        int $limit = 100,
-        int $offset = 0,
-        ?ResolvedStarRangeScope $scope = null,
-        ?int $maxRepositories = null,
-    ): array {
-        $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $maxRepositories);
-        if ($effectiveLimit === 0) {
+    private function resolveScopedTopRepositoryIds(?ResolvedStarRangeScope $scope, ?int $maxRepositories): ?array
+    {
+        if ($scope === null || $maxRepositories === null) {
+            return null;
+        }
+
+        if ($maxRepositories <= 0) {
             return [];
         }
 
-        return $this->createListQueryBuilder($search, $sortBy, $sortDirection, $scope)
-            ->setMaxResults($effectiveLimit)
-            ->setFirstResult($offset)
-            ->getQuery()
-            ->getResult();
+        $qb = $this->entityManager->createQueryBuilder()
+            ->select('repository.id')
+            ->from(Repository::class, 'repository');
+
+        $this->applyScope($qb, $scope);
+        $this->applySorting($qb, 'stars', 'DESC');
+
+        /** @var list<string> $repositoryIds */
+        $repositoryIds = array_map(
+            static fn (mixed $repositoryId): string => (string) $repositoryId,
+            $qb
+                ->setMaxResults($maxRepositories)
+                ->getQuery()
+                ->getSingleColumnResult(),
+        );
+
+        return $repositoryIds;
     }
 
-    /**
-     * Counts repositories matching the given criteria.
-     *
-     * @param string|null $search Optional search query.
-     *
-     * @return int The count of matching repositories.
-     */
-    public function countRepositories(
-        ?string $search = null,
-        ?ResolvedStarRangeScope $scope = null,
-        ?int $maxRepositories = null,
-    ): int
-    {
-        $qb = $this->createBaseQueryBuilder($search, $scope);
-
-        $count = (int) $qb
-            ->select('COUNT(repository.id)')
-            ->getQuery()
-            ->getSingleScalarResult();
-
-        if ($maxRepositories === null) {
-            return $count;
-        }
-
-        return min($count, $maxRepositories);
-    }
-
-    private function resolveEffectiveLimit(int $limit, int $offset, ?int $maxRepositories): int
-    {
-        if ($maxRepositories === null) {
+    private function resolveEffectiveLimit(
+        int $limit,
+        int $offset,
+        ?ResolvedStarRangeScope $scope,
+        ?int $maxRepositories,
+    ): int {
+        if ($scope === null || $maxRepositories === null) {
             return $limit;
         }
 

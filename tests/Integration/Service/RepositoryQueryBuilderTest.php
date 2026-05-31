@@ -44,7 +44,7 @@ final class RepositoryQueryBuilderTest extends KernelTestCase
         unset($this->entityManager, $this->queryBuilder, $this->syncOptions);
     }
 
-    public function testFindRepositoryListItemsAppliesScopeAndMaxRepositoriesCap(): void
+    public function testFindRepositoryListItemsUsesFixedTopNScopedDatasetAcrossAlternateSorts(): void
     {
         $this->seedRepositories();
 
@@ -62,6 +62,28 @@ final class RepositoryQueryBuilderTest extends KernelTestCase
             maxRepositories: 2,
         ));
 
+        self::assertSame([
+            ['id' => '2', 'name' => 'beta/toolkit', 'stars' => 7500],
+            ['id' => '3', 'name' => 'gamma/library', 'stars' => 5200],
+        ], $this->queryBuilder->findRepositoryListItems(
+            sortBy: 'name',
+            sortDirection: 'ASC',
+            limit: 10,
+            offset: 0,
+            scope: $scope,
+            maxRepositories: 2,
+        ));
+
+        self::assertSame([], $this->queryBuilder->findRepositoryListItems(
+            search: 'alpha',
+            sortBy: 'name',
+            sortDirection: 'ASC',
+            limit: 10,
+            offset: 0,
+            scope: $scope,
+            maxRepositories: 2,
+        ));
+
         self::assertSame([], $this->queryBuilder->findRepositoryListItems(
             sortBy: 'stars',
             sortDirection: 'DESC',
@@ -72,14 +94,16 @@ final class RepositoryQueryBuilderTest extends KernelTestCase
         ));
     }
 
-    public function testCountRepositoriesAppliesScopeAndCapsReportedTotal(): void
+    public function testCountRepositoriesUsesFixedTopNScopedDatasetForSearchAndTotals(): void
     {
         $this->seedRepositories();
 
         $scope = $this->syncOptions->resolvedStarRangeScope('5000_9999');
 
-        self::assertSame(2, $this->queryBuilder->countRepositories(scope: $scope));
-        self::assertSame(1, $this->queryBuilder->countRepositories(scope: $scope, maxRepositories: 1));
+        self::assertSame(3, $this->queryBuilder->countRepositories(scope: $scope));
+        self::assertSame(2, $this->queryBuilder->countRepositories(scope: $scope, maxRepositories: 2));
+        self::assertSame(0, $this->queryBuilder->countRepositories('alpha', scope: $scope, maxRepositories: 2));
+        self::assertSame(1, $this->queryBuilder->countRepositories('gamma', scope: $scope, maxRepositories: 2));
     }
 
     private function seedRepositories(): void
@@ -87,6 +111,7 @@ final class RepositoryQueryBuilderTest extends KernelTestCase
         $this->entityManager->persist($this->makeRepository('1', 'alpha/project', 12000));
         $this->entityManager->persist($this->makeRepository('2', 'beta/toolkit', 7500));
         $this->entityManager->persist($this->makeRepository('3', 'gamma/library', 5200));
+        $this->entityManager->persist($this->makeRepository('5', 'alpha/within-scope', 5100));
         $this->entityManager->persist($this->makeRepository('4', 'delta/helper', 400));
         $this->entityManager->flush();
         $this->entityManager->clear();
