@@ -17,3 +17,7 @@ services:
     App\Service\GitHubApiService:
         arguments:
             $githubToken: '%env(string:GITHUB_TOKEN)%'
+
+    App\Logging\LogContextProcessor:
+        tags:
+            - { name: monolog.processor }

@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Exception\GitHub\GitHubApiException;
+use App\Exception\GitHub\GitHubInvalidResponseException;
+use App\Exception\GitHub\GitHubRateLimitException;
+use App\Exception\GitHub\GitHubTimeoutException;
+use App\Exception\GitHub\GitHubUnavailableException;
 use App\Service\GitHubApiService;
 use App\Service\RepositorySyncService;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -21,6 +27,7 @@ final class RefreshRepositoriesCommand extends Command
     public function __construct(
         private readonly GitHubApiService $gitHubApiService,
         private readonly RepositorySyncService $repositorySyncService,
+        private readonly LoggerInterface $logger,
     ) {
         parent::__construct();
     }
@@ -45,13 +52,35 @@ final class RefreshRepositoriesCommand extends Command
             ));
 
             return Command::SUCCESS;
-        } catch (\Throwable $e) {
-            $io->error(sprintf(
-                'An error occurred during synchronization: %s',
-                $e->getMessage()
-            ));
+        } catch (GitHubApiException $exception) {
+            $this->logger->warning('Repository refresh command failed during GitHub API request.', [
+                'exception_class' => $exception::class,
+                'status_code' => $exception->getStatusCode(),
+                'retryable' => $exception->isRetryable(),
+            ]);
+
+            $io->error($this->githubFailureMessage($exception));
+
+            return Command::FAILURE;
+        } catch (\Throwable $exception) {
+            $this->logger->error('Repository refresh command failed unexpectedly.', [
+                'exception_class' => $exception::class,
+            ]);
+
+            $io->error('Repository refresh failed unexpectedly. Please try again.');
 
             return Command::FAILURE;
         }
+    }
+
+    private function githubFailureMessage(GitHubApiException $exception): string
+    {
+        return match (true) {
+            $exception instanceof GitHubRateLimitException => 'GitHub rate limit was reached. Please wait a few minutes before refreshing again.',
+            $exception instanceof GitHubTimeoutException => 'GitHub did not respond in time. Please try refreshing again.',
+            $exception instanceof GitHubUnavailableException => 'GitHub is temporarily unavailable. Please try refreshing again shortly.',
+            $exception instanceof GitHubInvalidResponseException => 'GitHub returned an unexpected response. Please try refreshing again later.',
+            default => 'GitHub refresh failed. Please try again later.',
+        };
     }
 }

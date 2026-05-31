@@ -76,7 +76,7 @@ final class RefreshRepositoriesCommandTest extends KernelTestCase
         $response->method('getStatusCode')->willReturn(500);
         $response->expects(self::never())->method('toArray');
 
-        $httpClient = $this->mockHttpClientReturning($response);
+        $httpClient = $this->mockHttpClientReturning($response, 3);
         $this->swapServices($httpClient);
 
         $command = static::getContainer()->get(RefreshRepositoriesCommand::class);
@@ -84,17 +84,17 @@ final class RefreshRepositoriesCommandTest extends KernelTestCase
         $exitCode = $tester->execute([]);
 
         self::assertSame(Command::FAILURE, $exitCode);
-        self::assertStringContainsString('An error occurred during synchronization', $tester->getDisplay());
+        self::assertStringContainsString('GitHub is temporarily unavailable. Please try refreshing again shortly.', $tester->getDisplay());
         self::assertSame(0, $this->repositories->count([]));
     }
 
     /**
      * @return HttpClientInterface&MockObject
      */
-    private function mockHttpClientReturning(ResponseInterface $response): HttpClientInterface
+    private function mockHttpClientReturning(ResponseInterface $response, int $expectedRequests = 1): HttpClientInterface
     {
         $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->expects(self::once())
+        $httpClient->expects(self::exactly($expectedRequests))
             ->method('request')
             ->with('GET', 'https://api.github.com/search/repositories', self::isArray())
             ->willReturn($response);
