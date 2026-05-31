@@ -90,5 +90,6 @@ final class RepositoryDetailWorkflowTest extends WebTestCase
         self::assertSame('php', $message->language);
         self::assertSame(100, $message->limit);
         self::assertNotSame('', $message->correlationId);
+        self::assertSame('manual', $message->triggeredBy);
     }
 }

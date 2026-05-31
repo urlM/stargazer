@@ -112,6 +112,7 @@ final class RepositoryController extends AbstractController
                 100,
                 $correlationId,
                 (new \DateTimeImmutable())->format(DATE_ATOM),
+                'manual',
             ));
 
             $logger->info('Repository refresh queued.', [
