@@ -7,6 +7,9 @@ namespace App\Service;
 use App\Entity\Repository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Contracts\Cache\CacheInterface;
+use Symfony\Contracts\Cache\ItemInterface;
 
 /**
  * Service responsible for building queries for repository listings with filtering and sorting.
@@ -18,6 +21,8 @@ final class RepositoryQueryBuilder
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SearchQueryNormalizer $searchQueryNormalizer,
+        #[Autowire(service: 'cache.app')]
+        private readonly CacheInterface $cache,
     ) {
     }
 
@@ -250,23 +255,54 @@ final class RepositoryQueryBuilder
             return [];
         }
 
+        $cacheKey = sprintf(
+            'repository_query_builder.scoped_ids.%s.%d.%s',
+            $scope->key,
+            $maxRepositories,
+            $this->resolveScopedDatasetVersion($scope),
+        );
+
+        /** @var list<string> $repositoryIds */
+        $repositoryIds = $this->cache->get($cacheKey, function (ItemInterface $item) use ($scope, $maxRepositories): array {
+            $item->expiresAfter(60);
+
+            $qb = $this->entityManager->createQueryBuilder()
+                ->select('repository.id')
+                ->from(Repository::class, 'repository');
+
+            $this->applyScope($qb, $scope);
+            $this->applySorting($qb, 'stars', 'DESC');
+
+            return array_map(
+                static fn (mixed $repositoryId): string => (string) $repositoryId,
+                $qb
+                    ->setMaxResults($maxRepositories)
+                    ->getQuery()
+                    ->getSingleColumnResult(),
+            );
+        });
+
+        return $repositoryIds;
+    }
+
+    private function resolveScopedDatasetVersion(ResolvedStarRangeScope $scope): string
+    {
         $qb = $this->entityManager->createQueryBuilder()
-            ->select('repository.id')
+            ->select('COUNT(repository.id) AS repository_count', 'MAX(repository.syncedAt) AS latest_sync_at')
             ->from(Repository::class, 'repository');
 
         $this->applyScope($qb, $scope);
-        $this->applySorting($qb, 'stars', 'DESC');
 
-        /** @var list<string> $repositoryIds */
-        $repositoryIds = array_map(
-            static fn (mixed $repositoryId): string => (string) $repositoryId,
-            $qb
-                ->setMaxResults($maxRepositories)
-                ->getQuery()
-                ->getSingleColumnResult(),
-        );
+        /** @var array{repository_count: string|int|null, latest_sync_at: mixed} $result */
+        $result = $qb->getQuery()->getSingleResult();
+        $repositoryCount = (int) ($result['repository_count'] ?? 0);
+        $latestSyncAt = $result['latest_sync_at'];
 
-        return $repositoryIds;
+        if (!$latestSyncAt instanceof \DateTimeInterface) {
+            return sprintf('%d-none', $repositoryCount);
+        }
+
+        return sprintf('%d-%s', $repositoryCount, $latestSyncAt->format('U'));
     }
 
     private function resolveEffectiveLimit(
