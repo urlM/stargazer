@@ -1,0 +1,8 @@
+framework:
+    messenger:
+        transports:
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+        routing:
+            # Route all messages to async by default
+            '*': async
