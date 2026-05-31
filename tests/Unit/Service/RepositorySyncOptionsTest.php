@@ -4,11 +4,27 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Service\ResolvedStarRangeScope;
 use App\Service\RepositorySyncOptions;
 use PHPUnit\Framework\TestCase;
 
 final class RepositorySyncOptionsTest extends TestCase
 {
+    public function testResolvedStarRangeScopeReturnsImmutableObject(): void
+    {
+        $options = new RepositorySyncOptions();
+        $scope = $options->resolvedStarRangeScope('5000_9999');
+
+        self::assertInstanceOf(ResolvedStarRangeScope::class, $scope);
+        self::assertSame('5000_9999', $scope->key);
+        self::assertSame('5,000Ã¢â‚¬â€œ9,999 stars', $scope->label);
+        self::assertSame(5000, $scope->min);
+        self::assertSame(9999, $scope->max);
+        self::assertSame([
+            ['min' => 5000, 'max' => 9999],
+        ], $scope->seeds);
+    }
+
     public function testResolveStarRangeScopeReturnsNormalizedBoundsAndMetadata(): void
     {
         $options = new RepositorySyncOptions();

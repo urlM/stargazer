@@ -103,7 +103,7 @@ final class RepositorySyncOptions
 
     public function normalizeStarRangeKey(?string $starRangeKey): string
     {
-        return $this->resolveStarRangeScope($starRangeKey)['key'];
+        return $this->resolvedStarRangeScope($starRangeKey)->key;
     }
 
     public function normalizeMaxRepositories(int|string|null $maxRepositories): int
@@ -117,15 +117,31 @@ final class RepositorySyncOptions
 
     public function starRangeLabel(string $starRangeKey): string
     {
-        return $this->resolveStarRangeScope($starRangeKey)['label'];
+        return $this->resolvedStarRangeScope($starRangeKey)->label;
     }
 
     public function describeScope(string $starRangeKey, int $maxRepositories): string
     {
         return sprintf(
             '%s, up to %s repositories',
-            $this->resolveStarRangeScope($starRangeKey)['label'],
+            $this->resolvedStarRangeScope($starRangeKey)->label,
             number_format($this->normalizeMaxRepositories($maxRepositories)),
+        );
+    }
+
+    public function resolvedStarRangeScope(?string $starRangeKey): ResolvedStarRangeScope
+    {
+        $normalizedKey = is_string($starRangeKey) && isset(self::STAR_RANGES[$starRangeKey])
+            ? $starRangeKey
+            : self::DEFAULT_STAR_RANGE;
+        $config = self::STAR_RANGES[$normalizedKey];
+
+        return new ResolvedStarRangeScope(
+            $normalizedKey,
+            $config['label'],
+            $config['min'],
+            $config['max'],
+            $config['seeds'],
         );
     }
 
@@ -140,18 +156,7 @@ final class RepositorySyncOptions
      */
     public function resolveStarRangeScope(?string $starRangeKey): array
     {
-        $normalizedKey = is_string($starRangeKey) && isset(self::STAR_RANGES[$starRangeKey])
-            ? $starRangeKey
-            : self::DEFAULT_STAR_RANGE;
-        $config = self::STAR_RANGES[$normalizedKey];
-
-        return [
-            'key' => $normalizedKey,
-            'label' => $config['label'],
-            'min' => $config['min'],
-            'max' => $config['max'],
-            'seeds' => $config['seeds'],
-        ];
+        return $this->resolvedStarRangeScope($starRangeKey)->toArray();
     }
 
     /**
@@ -159,18 +164,7 @@ final class RepositorySyncOptions
      */
     public function seedShards(string $starRangeKey): array
     {
-        $scope = $this->resolveStarRangeScope($starRangeKey);
-        $shards = [];
-
-        foreach ($scope['seeds'] as $seed) {
-            $shards[] = [
-                'min' => $seed['min'],
-                'max' => $seed['max'],
-                'page' => 1,
-            ];
-        }
-
-        return $shards;
+        return $this->resolvedStarRangeScope($starRangeKey)->seedShards();
     }
 
     /**
