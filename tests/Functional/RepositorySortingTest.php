@@ -148,6 +148,63 @@ final class RepositorySortingTest extends WebTestCase
         );
     }
 
+    public function testSearchSubmitPreservesScopeAndSortState(): void
+    {
+        $this->entityManager->persist($this->makeRepository('1', 'omega/out-of-scope', 12000));
+        $this->entityManager->persist($this->makeRepository('2', 'alpha/inside-scope', 7500));
+        $this->entityManager->persist($this->makeRepository('3', 'beta/inside-scope', 5200));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?sort=name&direction=asc&star_range=5000_9999&max_repositories=100');
+
+        $this->client->submit($crawler->selectButton('Search')->form([
+            'search' => 'alpha',
+        ]));
+
+        $crawler = $this->client->getCrawler();
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('alpha', $crawler->filter('input[name="search"]')->attr('value'));
+        self::assertSame('1', $crawler->filter('input[name="page"]')->attr('value'));
+        self::assertSame('name', $crawler->filter('input[name="sort"]')->attr('value'));
+        self::assertSame('asc', $crawler->filter('input[name="direction"]')->attr('value'));
+        self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
+        self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+        self::assertSame(
+            ['alpha/inside-scope'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+    }
+
+    public function testClearActionPreservesScopeAndSortStateWhileRemovingSearch(): void
+    {
+        $this->entityManager->persist($this->makeRepository('1', 'omega/out-of-scope', 12000));
+        $this->entityManager->persist($this->makeRepository('2', 'alpha/inside-scope', 7500));
+        $this->entityManager->persist($this->makeRepository('3', 'beta/inside-scope', 5200));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?search=alpha&sort=name&direction=asc&star_range=5000_9999&max_repositories=100');
+
+        $this->client->click($crawler->selectLink('Clear')->link());
+        $crawler = $this->client->getCrawler();
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('', $crawler->filter('input[name="search"]')->attr('value'));
+        self::assertSame('1', $crawler->filter('input[name="page"]')->attr('value'));
+        self::assertSame('name', $crawler->filter('input[name="sort"]')->attr('value'));
+        self::assertSame('asc', $crawler->filter('input[name="direction"]')->attr('value'));
+        self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
+        self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+        self::assertSame(
+            ['alpha/inside-scope', 'beta/inside-scope'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(
