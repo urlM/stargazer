@@ -2,10 +2,14 @@
 {% set name_direction = sort == 'name' and direction == 'asc' ? 'desc' : 'asc' %}
 {% set stars_direction = sort == 'stars' and direction == 'desc' ? 'asc' : 'desc' %}
 {% set fragment_mode = fragment_mode|default(false) %}
+{% set scope_label = star_range_choices[selected_star_range|default('all')] ?? 'All stars' %}
 {% if next_page_path is not defined %}
     {% set next_page_path = pagerfanta is not null and pagerfanta.hasNextPage ? path('app_repository_index', list_state|merge({page: pagerfanta.nextPage})) : '' %}
 {% endif %}
 <div data-infinite-content>
+    <p class="small text-muted mb-3">
+        Showing stored results for {{ scope_label }} within the top {{ selected_max_repositories|default(100)|number_format }} repositories captured during the latest refresh.
+    </p>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
             <thead>

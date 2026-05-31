@@ -7,6 +7,12 @@
     </tr>
 {% else %}
     <tr>
-        <td colspan="2">No repositories found. {% if search %}Try a different search.{% else %}Please run a sync.{% endif %}</td>
+        <td colspan="2">
+            {% if search %}
+                No stored repositories in this scope match “{{ search }}”. Try a different search.
+            {% else %}
+                No stored repositories are available for this scope yet. Queue a refresh to load matching repositories.
+            {% endif %}
+        </td>
     </tr>
 {% endfor %}

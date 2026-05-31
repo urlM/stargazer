@@ -113,6 +113,39 @@ final class RepositorySortingTest extends WebTestCase
         );
         self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
         self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+        self::assertStringContainsString(
+            'Showing stored results for 5,000–9,999 stars within the top 100 repositories captured during the latest refresh.',
+            $crawler->filter('[data-infinite-content]')->text()
+        );
+    }
+
+    public function testEmptyStateExplainsWhenSelectedScopeHasNoStoredRepositories(): void
+    {
+        $this->entityManager->persist($this->makeRepository('1', 'outside/scope', 12000));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?star_range=5000_9999&max_repositories=100');
+
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString(
+            'No stored repositories are available for this scope yet. Queue a refresh to load matching repositories.',
+            $crawler->filter('tbody')->text()
+        );
+    }
+
+    public function testEmptyStateExplainsWhenSearchHasNoMatchesWithinScopedSet(): void
+    {
+        $this->entityManager->persist($this->makeRepository('2', 'beta/toolkit', 7500));
+        $this->entityManager->persist($this->makeRepository('3', 'gamma/library', 5200));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?search=alpha&star_range=5000_9999&max_repositories=100');
+
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString(
+            'No stored repositories in this scope match “alpha”. Try a different search.',
+            $crawler->filter('tbody')->text()
+        );
     }
 
     private function makeRepository(string $id, string $name, int $stars): Repository
