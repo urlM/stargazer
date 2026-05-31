@@ -170,6 +170,7 @@ final class RepositoryController extends AbstractController
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
         $scope = $syncOptions->resolvedStarRangeScope($starRangeKey);
+        $scopedRepositoryIds = $queryBuilder->resolveScopedRepositoryIds($scope, $maxRepositories);
         $page = max(1, $request->query->getInt('page', 1));
         $offset = ($page - 1) * self::PER_PAGE;
         $pagerfanta = null;
@@ -184,13 +185,14 @@ final class RepositoryController extends AbstractController
                 $offset,
                 $scope,
                 $maxRepositories,
+                $scopedRepositoryIds,
             );
             $hasNextPage = count($repositories) > self::PER_PAGE;
             if ($hasNextPage) {
                 $repositories = array_slice($repositories, 0, self::PER_PAGE);
             }
         } else {
-            $totalResults = $queryBuilder->countRepositories($search, $scope, $maxRepositories);
+            $totalResults = $queryBuilder->countRepositories($search, $scope, $maxRepositories, $scopedRepositoryIds);
             $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
             $page = min($page, $lastPage);
             $offset = ($page - 1) * self::PER_PAGE;
@@ -202,6 +204,7 @@ final class RepositoryController extends AbstractController
                 $offset,
                 $scope,
                 $maxRepositories,
+                $scopedRepositoryIds,
             );
             $hasNextPage = $page < $lastPage;
             $pagerfanta = new Pagerfanta(new FixedAdapter($totalResults, $repositories));

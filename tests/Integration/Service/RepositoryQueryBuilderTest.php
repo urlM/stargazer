@@ -106,6 +106,29 @@ final class RepositoryQueryBuilderTest extends KernelTestCase
         self::assertSame(1, $this->queryBuilder->countRepositories('gamma', scope: $scope, maxRepositories: 2));
     }
 
+    public function testResolvedScopedRepositoryIdsCanBeReusedAcrossCountAndListing(): void
+    {
+        $this->seedRepositories();
+
+        $scope = $this->syncOptions->resolvedStarRangeScope('5000_9999');
+        $repositoryIds = $this->queryBuilder->resolveScopedRepositoryIds($scope, 2);
+
+        self::assertSame(['2', '3'], $repositoryIds);
+        self::assertSame(2, $this->queryBuilder->countRepositories(scope: $scope, maxRepositories: 2, repositoryIds: $repositoryIds));
+        self::assertSame([
+            ['id' => '2', 'name' => 'beta/toolkit', 'stars' => 7500],
+            ['id' => '3', 'name' => 'gamma/library', 'stars' => 5200],
+        ], $this->queryBuilder->findRepositoryListItems(
+            sortBy: 'stars',
+            sortDirection: 'DESC',
+            limit: 10,
+            offset: 0,
+            scope: $scope,
+            maxRepositories: 2,
+            repositoryIds: $repositoryIds,
+        ));
+    }
+
     private function seedRepositories(): void
     {
         $this->entityManager->persist($this->makeRepository('1', 'alpha/project', 12000));

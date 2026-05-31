@@ -73,6 +73,7 @@ final class RepositoryQueryBuilder
         int $offset = 0,
         ?ResolvedStarRangeScope $scope = null,
         ?int $maxRepositories = null,
+        ?array $repositoryIds = null,
     ): array {
         $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $scope, $maxRepositories);
         if ($effectiveLimit === 0) {
@@ -84,7 +85,7 @@ final class RepositoryQueryBuilder
             $sortBy,
             $sortDirection,
             $scope,
-            $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
+            $repositoryIds ?? $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
         )
             ->setMaxResults($effectiveLimit)
             ->setFirstResult($offset)
@@ -105,6 +106,7 @@ final class RepositoryQueryBuilder
         int $offset = 0,
         ?ResolvedStarRangeScope $scope = null,
         ?int $maxRepositories = null,
+        ?array $repositoryIds = null,
     ): array {
         $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $scope, $maxRepositories);
         if ($effectiveLimit === 0) {
@@ -116,7 +118,7 @@ final class RepositoryQueryBuilder
             $sortBy,
             $sortDirection,
             $scope,
-            $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
+            $repositoryIds ?? $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
         )
             ->setMaxResults($effectiveLimit)
             ->setFirstResult($offset)
@@ -131,15 +133,24 @@ final class RepositoryQueryBuilder
         ?string $search = null,
         ?ResolvedStarRangeScope $scope = null,
         ?int $maxRepositories = null,
+        ?array $repositoryIds = null,
     ): int {
         return (int) $this->createBaseQueryBuilder(
             $search,
             $scope,
-            $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
+            $repositoryIds ?? $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
         )
             ->select('COUNT(repository.id)')
             ->getQuery()
             ->getSingleScalarResult();
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    public function resolveScopedRepositoryIds(?ResolvedStarRangeScope $scope = null, ?int $maxRepositories = null): ?array
+    {
+        return $this->resolveScopedTopRepositoryIds($scope, $maxRepositories);
     }
 
     /**
