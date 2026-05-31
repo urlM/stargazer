@@ -18,6 +18,10 @@ services:
         arguments:
             $githubToken: '%env(string:GITHUB_TOKEN)%'
 
+    App\Command\WorkerHealthCommand:
+        arguments:
+            $messengerTransportDsn: '%env(string:MESSENGER_TRANSPORT_DSN)%'
+
     App\Logging\LogContextProcessor:
         tags:
             - { name: monolog.processor }
