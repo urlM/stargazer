@@ -141,12 +141,10 @@ final class RepositoryController extends AbstractController
      *     page: int,
      *     sort: string,
      *     direction: string,
-     *     fragment_mode: bool,
      *     selected_star_range: string,
      *     selected_max_repositories: int,
      *     star_range_choices: array<string, string>,
      *     max_repository_choices: list<int>,
-     *     next_page_path: string,
      *     pagination_pages: list<int|null>
      * }
      */
@@ -188,13 +186,11 @@ final class RepositoryController extends AbstractController
             'page' => $page,
             'sort' => $sort,
             'direction' => $direction,
-            'fragment_mode' => false,
             'selected_star_range' => $starRangeKey,
             'selected_max_repositories' => $maxRepositories,
             'star_range_choices' => $syncOptions->starRangeChoices(),
             'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
             'pagination_pages' => $this->buildPaginationPages($page, $lastPage),
-            'next_page_path' => '',
         ];
     }
 

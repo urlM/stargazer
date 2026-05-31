@@ -43,7 +43,7 @@
     </div>
 
     {% if pagerfanta.nbPages > 1 %}
-        <nav class="mt-4" aria-label="Pagination" data-pagination data-next-page-url="{{ next_page_path }}">
+        <nav class="mt-4" aria-label="Pagination">
             <ul class="pagination justify-content-center">
                 {% if pagerfanta.hasPreviousPage %}
                     <li class="page-item">
@@ -73,7 +73,7 @@
 
                 {% if pagerfanta.hasNextPage %}
                     <li class="page-item">
-                        <a class="page-link" href="{{ next_page_path }}">Next</a>
+                        <a class="page-link" href="{{ path('app_repository_index', list_state|merge({page: pagerfanta.nextPage})) }}">Next</a>
                     </li>
                 {% else %}
                     <li class="page-item disabled">
