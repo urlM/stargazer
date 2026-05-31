@@ -30,6 +30,7 @@
         "symfony/process": "*",
         "symfony/property-access": "*",
         "symfony/property-info": "*",
+        "symfony/redis-messenger": "7.4.*",
         "symfony/runtime": "*",
         "symfony/security-bundle": "*",
         "symfony/serializer": "*",

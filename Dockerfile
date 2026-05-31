@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y unzip libicu-dev
 RUN docker-php-ext-configure pdo_mysql && docker-php-ext-install pdo_mysql
 RUN docker-php-ext-configure opcache && docker-php-ext-install opcache
 RUN docker-php-ext-configure intl && docker-php-ext-install intl
+RUN pecl install redis && docker-php-ext-enable redis
 
 # install Composer
 COPY docker/install-composer.sh /tmp
