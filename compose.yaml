@@ -9,6 +9,13 @@ services:
       - ./docker/apache.conf:/etc/apache2/sites-available/000-default.conf
       - .:/var/www/
     working_dir: /var/www
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
 ###> doctrine/doctrine-bundle ###
   database:
     image: docker.io/mariadb:11.5
@@ -26,3 +33,4 @@ volumes:
 ###> doctrine/doctrine-bundle ###
   database_data:
 ###< doctrine/doctrine-bundle ###
+  redis_data:
