@@ -13,7 +13,6 @@ use App\Repository\RepositoryRepository;
 use App\Service\GitHubApiService;
 use App\Service\RepositoryQueryBuilder;
 use App\Service\RepositorySyncService;
-use BabDev\PagerfantaBundle\Attribute\Pagerfanta as PagerfantaAttribute;
 use Pagerfanta\Doctrine\ORM\QueryAdapter;
 use Pagerfanta\Pagerfanta;
 use Psr\Log\LoggerInterface;
@@ -24,17 +23,22 @@ use Symfony\Component\Routing\Annotation\Route;
 
 final class RepositoryController extends AbstractController
 {
+    private const DEFAULT_SORT = 'stars';
+    private const DEFAULT_DIRECTION = 'desc';
+    private const ALLOWED_SORTS = ['stars', 'name', 'created_at', 'pushed_at'];
+
     #[Route('/', name: 'app_repository_index', methods: ['GET'])]
     public function index(
         Request $request,
-        RepositoryRepository $repositoryRepository,
         RepositoryQueryBuilder $queryBuilder,
     ): Response {
         $page = $request->query->getInt('page', 1);
         $search = $request->query->getString('search', '');
+        $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
+        $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
 
         // Create paginated query
-        $qb = $queryBuilder->createListQueryBuilder($search);
+        $qb = $queryBuilder->createListQueryBuilder($search, $sort, $direction);
         $adapter = new QueryAdapter($qb);
         $pagerfanta = new Pagerfanta($adapter);
         $pagerfanta->setMaxPerPage(20);
@@ -44,6 +48,9 @@ final class RepositoryController extends AbstractController
             'repositories' => $pagerfanta->getCurrentPageResults(),
             'pagerfanta' => $pagerfanta,
             'search' => $search,
+            'page' => $page,
+            'sort' => $sort,
+            'direction' => $direction,
         ]);
     }
 
@@ -72,7 +79,12 @@ final class RepositoryController extends AbstractController
     ): Response {
         if (!$this->isCsrfTokenValid('refresh', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Invalid CSRF token.');
-            return $this->redirectToRoute('app_repository_index');
+            return $this->redirectToRoute('app_repository_index', [
+                'page' => max(1, $request->request->getInt('page', 1)),
+                'search' => $request->request->getString('search', ''),
+                'sort' => $this->normalizeSort($request->request->getString('sort', self::DEFAULT_SORT)),
+                'direction' => $this->normalizeDirection($request->request->getString('direction', self::DEFAULT_DIRECTION)),
+            ]);
         }
 
         try {
@@ -95,7 +107,22 @@ final class RepositoryController extends AbstractController
             $this->addFlash('error', 'Repository refresh failed unexpectedly. Please try again.');
         }
 
-        return $this->redirectToRoute('app_repository_index');
+        return $this->redirectToRoute('app_repository_index', [
+            'page' => max(1, $request->request->getInt('page', 1)),
+            'search' => $request->request->getString('search', ''),
+            'sort' => $this->normalizeSort($request->request->getString('sort', self::DEFAULT_SORT)),
+            'direction' => $this->normalizeDirection($request->request->getString('direction', self::DEFAULT_DIRECTION)),
+        ]);
+    }
+
+    private function normalizeSort(string $sort): string
+    {
+        return in_array($sort, self::ALLOWED_SORTS, true) ? $sort : self::DEFAULT_SORT;
+    }
+
+    private function normalizeDirection(string $direction): string
+    {
+        return mb_strtolower($direction) === 'asc' ? 'asc' : 'desc';
     }
 
     private function githubFailureMessage(GitHubApiException $exception): string
