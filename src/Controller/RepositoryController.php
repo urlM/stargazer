@@ -62,14 +62,20 @@ final class RepositoryController extends AbstractController
         $pagerfanta->setMaxPerPage(20);
         $pagerfanta->setCurrentPage($page);
 
-        return $this->render('repository/index.html.twig', [
+        $viewData = [
             'repositories' => $pagerfanta->getCurrentPageResults(),
             'pagerfanta' => $pagerfanta,
             'search' => $search,
             'page' => $page,
             'sort' => $sort,
             'direction' => $direction,
-        ]);
+        ];
+
+        if ($request->query->getBoolean('_fragment')) {
+            return $this->render('repository/_list_content.html.twig', $viewData);
+        }
+
+        return $this->render('repository/index.html.twig', $viewData);
     }
 
     #[Route('/repository/{id}', name: 'app_repository_show', methods: ['GET'], requirements: ['id' => '\d+'])]
