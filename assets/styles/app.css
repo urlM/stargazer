@@ -152,10 +152,6 @@ th {
     background: var(--panel-strong);
 }
 
-.repository-scroll-sentinel {
-    min-height: 1px;
-}
-
 @media (max-width: 720px) {
     .brand-shell,
     .shell {
