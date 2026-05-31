@@ -106,6 +106,25 @@ final class RepositoryInfiniteScrollTest extends WebTestCase
         );
     }
 
+    public function testFragmentResponseSupportsDeepPagesForLargeScopedDatasets(): void
+    {
+        for ($index = 1; $index <= 500; ++$index) {
+            $name = sprintf('repo-%03d', $index);
+            $this->entityManager->persist($this->makeRepository((string) $index, $name, 2000 - $index));
+        }
+
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?_fragment=1&page=13&sort=stars&direction=desc&star_range=all&max_repositories=500');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(20, $crawler->filter('tbody tr[data-repository-id]'));
+        self::assertSame(
+            '/?search=&page=14&sort=stars&direction=desc&star_range=all&max_repositories=500',
+            $crawler->filter('[data-infinite-fragment]')->attr('data-next-page-url'),
+        );
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(

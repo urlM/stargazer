@@ -170,26 +170,44 @@ final class RepositoryController extends AbstractController
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
         $scope = $syncOptions->resolvedStarRangeScope($starRangeKey);
-        $totalResults = $queryBuilder->countRepositories($search, $scope, $maxRepositories);
-        $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
-        $page = min(max(1, $request->query->getInt('page', 1)), $lastPage);
+        $page = max(1, $request->query->getInt('page', 1));
         $offset = ($page - 1) * self::PER_PAGE;
-        $repositories = $queryBuilder->findRepositoryListItems(
-            $search,
-            $sort,
-            $direction,
-            self::PER_PAGE,
-            $offset,
-            $scope,
-            $maxRepositories,
-        );
-        $hasNextPage = $page < $lastPage;
         $pagerfanta = null;
+        $paginationPages = [];
 
-        if (!$fragmentMode) {
+        if ($fragmentMode) {
+            $repositories = $queryBuilder->findRepositoryListItems(
+                $search,
+                $sort,
+                $direction,
+                self::PER_PAGE + 1,
+                $offset,
+                $scope,
+                $maxRepositories,
+            );
+            $hasNextPage = count($repositories) > self::PER_PAGE;
+            if ($hasNextPage) {
+                $repositories = array_slice($repositories, 0, self::PER_PAGE);
+            }
+        } else {
+            $totalResults = $queryBuilder->countRepositories($search, $scope, $maxRepositories);
+            $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
+            $page = min($page, $lastPage);
+            $offset = ($page - 1) * self::PER_PAGE;
+            $repositories = $queryBuilder->findRepositoryListItems(
+                $search,
+                $sort,
+                $direction,
+                self::PER_PAGE,
+                $offset,
+                $scope,
+                $maxRepositories,
+            );
+            $hasNextPage = $page < $lastPage;
             $pagerfanta = new Pagerfanta(new FixedAdapter($totalResults, $repositories));
             $pagerfanta->setMaxPerPage(self::PER_PAGE);
             $pagerfanta->setCurrentPage($page);
+            $paginationPages = $this->buildPaginationPages($page, $lastPage);
         }
 
         return [
@@ -204,7 +222,7 @@ final class RepositoryController extends AbstractController
             'selected_max_repositories' => $maxRepositories,
             'star_range_choices' => $syncOptions->starRangeChoices(),
             'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
-            'pagination_pages' => $this->buildPaginationPages($page, $lastPage),
+            'pagination_pages' => $paginationPages,
             'next_page_path' => $hasNextPage
                 ? $this->generateUrl('app_repository_index', [
                     'search' => $search,
