@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Message\SyncRepositoriesMessage;
 use App\Repository\RepositoryRepository;
 use App\Service\RepositoryQueryBuilder;
+use App\Service\RepositorySyncOptions;
 use Pagerfanta\Adapter\CallbackAdapter;
 use Pagerfanta\Pagerfanta;
 use Psr\Log\LoggerInterface;
@@ -27,11 +28,14 @@ final class RepositoryController extends AbstractController
     public function index(
         Request $request,
         RepositoryQueryBuilder $queryBuilder,
+        RepositorySyncOptions $syncOptions,
     ): Response {
         $page = $request->query->getInt('page', 1);
         $search = $request->query->getString('search', '');
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
+        $starRangeKey = $syncOptions->normalizeStarRangeKey($request->query->getString('star_range', RepositorySyncOptions::DEFAULT_STAR_RANGE));
+        $maxRepositories = $syncOptions->normalizeMaxRepositories($request->query->getInt('max_repositories', RepositorySyncOptions::DEFAULT_MAX_REPOSITORIES));
 
         if ($request->query->getBoolean('_fragment')) {
             return $this->render(
@@ -64,12 +68,18 @@ final class RepositoryController extends AbstractController
             'sort' => $sort,
             'direction' => $direction,
             'fragment_mode' => false,
+            'selected_star_range' => $starRangeKey,
+            'selected_max_repositories' => $maxRepositories,
+            'star_range_choices' => $syncOptions->starRangeChoices(),
+            'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
             'next_page_path' => $pagerfanta->hasNextPage()
                 ? $this->generateUrl('app_repository_index', [
                     'search' => $search,
                     'page' => $pagerfanta->getNextPage(),
                     'sort' => $sort,
                     'direction' => $direction,
+                    'star_range' => $starRangeKey,
+                    'max_repositories' => $maxRepositories,
                 ])
                 : '',
         ];
@@ -97,6 +107,7 @@ final class RepositoryController extends AbstractController
     public function refresh(
         Request $request,
         MessageBusInterface $messageBus,
+        RepositorySyncOptions $syncOptions,
         LoggerInterface $logger,
     ): Response {
         if (!$this->isCsrfTokenValid('refresh', (string) $request->request->get('_token'))) {
@@ -106,25 +117,38 @@ final class RepositoryController extends AbstractController
                 'search' => $request->request->getString('search', ''),
                 'sort' => $this->normalizeSort($request->request->getString('sort', self::DEFAULT_SORT)),
                 'direction' => $this->normalizeDirection($request->request->getString('direction', self::DEFAULT_DIRECTION)),
+                'star_range' => $syncOptions->normalizeStarRangeKey($request->request->getString('star_range', RepositorySyncOptions::DEFAULT_STAR_RANGE)),
+                'max_repositories' => $syncOptions->normalizeMaxRepositories($request->request->getInt('max_repositories', RepositorySyncOptions::DEFAULT_MAX_REPOSITORIES)),
             ]);
         }
 
         try {
             $correlationId = bin2hex(random_bytes(16));
+            $starRangeKey = $syncOptions->normalizeStarRangeKey($request->request->getString('star_range', RepositorySyncOptions::DEFAULT_STAR_RANGE));
+            $maxRepositories = $syncOptions->normalizeMaxRepositories($request->request->getInt('max_repositories', RepositorySyncOptions::DEFAULT_MAX_REPOSITORIES));
             $messageBus->dispatch(new SyncRepositoriesMessage(
                 'php',
-                100,
+                $maxRepositories,
                 $correlationId,
                 (new \DateTimeImmutable())->format(DATE_ATOM),
                 'manual',
+                $starRangeKey,
             ));
 
             $logger->info('Repository refresh queued.', [
                 'correlation_id' => $correlationId,
                 'triggered_by' => 'manual',
+                'star_range_key' => $starRangeKey,
+                'max_repositories' => $maxRepositories,
             ]);
 
-            $this->addFlash('success', 'Repository refresh queued. The sync will run asynchronously.');
+            $this->addFlash(
+                'success',
+                sprintf(
+                    'Repository refresh queued for %s. The sync will run asynchronously.',
+                    $syncOptions->describeScope($starRangeKey, $maxRepositories),
+                ),
+            );
         } catch (\Throwable $exception) {
             $logger->error('Repository refresh could not be queued.', [
                 'exception_class' => $exception::class,
@@ -138,6 +162,8 @@ final class RepositoryController extends AbstractController
             'search' => $request->request->getString('search', ''),
             'sort' => $this->normalizeSort($request->request->getString('sort', self::DEFAULT_SORT)),
             'direction' => $this->normalizeDirection($request->request->getString('direction', self::DEFAULT_DIRECTION)),
+            'star_range' => $syncOptions->normalizeStarRangeKey($request->request->getString('star_range', RepositorySyncOptions::DEFAULT_STAR_RANGE)),
+            'max_repositories' => $syncOptions->normalizeMaxRepositories($request->request->getInt('max_repositories', RepositorySyncOptions::DEFAULT_MAX_REPOSITORIES)),
         ]);
     }
 

@@ -12,12 +12,15 @@ use App\MessageHandler\SyncRepositoriesHandler;
 use App\Repository\RepositoryRepository;
 use App\Repository\SyncLogRepository;
 use App\Service\GitHubApiService;
+use App\Service\RepositorySyncOptions;
 use App\Service\RepositorySyncService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
@@ -53,6 +56,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
         $response = $this->createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(200);
         $response->method('toArray')->willReturn([
+            'total_count' => 1,
             'items' => [[
                 'id' => 458058,
                 'full_name' => 'symfony/symfony',
@@ -63,6 +67,9 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
                 'pushed_at' => '2026-05-24T11:15:00+00:00',
             ]],
         ]);
+        $response->method('getHeaders')->with(false)->willReturn([
+            'x-ratelimit-remaining' => ['4999'],
+        ]);
 
         $handler = $this->makeHandler($this->mockHttpClientReturning($response));
         $handler(new SyncRepositoriesMessage(
@@ -71,6 +78,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
             'corr-success',
             '2026-05-30T22:30:00+00:00',
             'manual',
+            'all',
         ));
 
         $storedRepository = $this->repositories->find('458058');
@@ -80,6 +88,9 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
         self::assertInstanceOf(SyncLog::class, $syncLog);
         self::assertSame('success', $syncLog->getStatus());
         self::assertSame('manual', $syncLog->getTriggeredBy());
+        self::assertSame('all', $syncLog->getStarRangeKey());
+        self::assertSame(1, $syncLog->getMaxRepositories());
+        self::assertSame(1, $syncLog->getSyncedCount());
         self::assertSame(0, $syncLog->getRetryCount());
         self::assertNull($syncLog->getError());
         self::assertNotNull($syncLog->getDurationMs());
@@ -102,6 +113,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
                 'corr-failed',
                 '2026-05-30T22:31:00+00:00',
                 'manual',
+                'all',
             ));
         } finally {
             $syncLog = $this->syncLogs->findOneByCorrelationId('corr-failed');
@@ -109,11 +121,75 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
             self::assertInstanceOf(SyncLog::class, $syncLog);
             self::assertSame('failed', $syncLog->getStatus());
             self::assertSame('manual', $syncLog->getTriggeredBy());
+            self::assertSame('all', $syncLog->getStarRangeKey());
+            self::assertSame(1, $syncLog->getMaxRepositories());
             self::assertSame(0, $syncLog->getRetryCount());
             self::assertNotNull($syncLog->getError());
             self::assertNotNull($syncLog->getDurationMs());
             self::assertSame(0, $this->repositories->count([]));
         }
+    }
+
+    public function testHandlerDispatchesFollowUpMessageWhenMorePagesRemain(): void
+    {
+        $items = [];
+
+        for ($index = 1; $index <= 100; ++$index) {
+            $items[] = [
+                'id' => $index,
+                'full_name' => sprintf('vendor/repo-%03d', $index),
+                'html_url' => sprintf('https://github.com/vendor/repo-%03d', $index),
+                'description' => 'Repository description',
+                'stargazers_count' => 1000 - $index,
+                'created_at' => '2020-01-01T00:00:00+00:00',
+                'pushed_at' => '2026-05-24T11:15:00+00:00',
+            ];
+        }
+
+        $response = $this->createStub(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('toArray')->willReturn([
+            'total_count' => 150,
+            'items' => $items,
+        ]);
+        $response->method('getHeaders')->with(false)->willReturn([
+            'x-ratelimit-remaining' => ['4999'],
+        ]);
+
+        $dispatchedMessages = [];
+        $messageBus = $this->createMock(MessageBusInterface::class);
+        $messageBus->expects(self::once())
+            ->method('dispatch')
+            ->with(self::callback(static function (SyncRepositoriesMessage $message) use (&$dispatchedMessages): bool {
+                $dispatchedMessages[] = $message;
+
+                return true;
+            }))
+            ->willReturnCallback(static fn (SyncRepositoriesMessage $message): Envelope => new Envelope($message));
+
+        $handler = $this->makeHandler($this->mockHttpClientReturning($response), $messageBus);
+        $handler(new SyncRepositoriesMessage(
+            'php',
+            150,
+            'corr-follow-up',
+            '2026-05-30T22:32:00+00:00',
+            'manual',
+            '100_999',
+            150,
+            0,
+            [['min' => 100, 'max' => 999, 'page' => 1]],
+        ));
+
+        $syncLog = $this->syncLogs->findOneByCorrelationId('corr-follow-up');
+
+        self::assertInstanceOf(SyncLog::class, $syncLog);
+        self::assertSame('running', $syncLog->getStatus());
+        self::assertSame(100, $syncLog->getSyncedCount());
+        self::assertCount(100, $this->repositories->findAll());
+        self::assertCount(1, $dispatchedMessages);
+        self::assertSame(50, $dispatchedMessages[0]->remainingRepositories);
+        self::assertSame(100, $dispatchedMessages[0]->syncedCount);
+        self::assertSame([['min' => 100, 'max' => 999, 'page' => 2]], $dispatchedMessages[0]->pendingShards);
     }
 
     /**
@@ -130,12 +206,19 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
         return $httpClient;
     }
 
-    private function makeHandler(HttpClientInterface $httpClient): SyncRepositoriesHandler
+    private function makeHandler(HttpClientInterface $httpClient, ?MessageBusInterface $messageBus = null): SyncRepositoriesHandler
     {
+        if ($messageBus === null) {
+            $messageBus = $this->createMock(MessageBusInterface::class);
+            $messageBus->expects(self::any())->method('dispatch');
+        }
+
         return new SyncRepositoriesHandler(
             new GitHubApiService($httpClient, ''),
             new RepositorySyncService($this->entityManager, $this->repositories),
+            new RepositorySyncOptions(),
             $this->syncLogs,
+            $messageBus,
             new NullLogger(),
         );
     }

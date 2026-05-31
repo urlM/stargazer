@@ -74,22 +74,30 @@ final class RepositoryDetailWorkflowTest extends WebTestCase
         $crawler = $this->client->request('GET', '/');
         $token = $crawler->filter('input[name="_token"]')->attr('value');
 
-        $this->client->request('POST', '/refresh', ['_token' => $token]);
+        $this->client->request('POST', '/refresh', [
+            '_token' => $token,
+            'star_range' => '1000_4999',
+            'max_repositories' => 500,
+        ]);
         $transport = static::getContainer()->get('messenger.transport.async');
         \assert($transport instanceof InMemoryTransport);
         $sentMessages = $transport->getSent();
         $crawler = $this->client->followRedirect();
 
         self::assertResponseIsSuccessful();
-        self::assertStringContainsString('Repository refresh queued. The sync will run asynchronously.', $crawler->filter('.alert-success')->text());
+        self::assertStringContainsString('Repository refresh queued for 1,000–4,999 stars, up to 500 repositories.', $crawler->filter('.alert-success')->text());
         self::assertCount(1, $sentMessages);
 
         $message = $sentMessages[0]->getMessage();
 
         self::assertInstanceOf(SyncRepositoriesMessage::class, $message);
         self::assertSame('php', $message->language);
-        self::assertSame(100, $message->limit);
+        self::assertSame(500, $message->maxRepositories);
         self::assertNotSame('', $message->correlationId);
         self::assertSame('manual', $message->triggeredBy);
+        self::assertSame('1000_4999', $message->starRangeKey);
+        self::assertNull($message->remainingRepositories);
+        self::assertSame(0, $message->syncedCount);
+        self::assertSame([], $message->pendingShards);
     }
 }

@@ -33,6 +33,15 @@ final class SyncLog
     #[ORM\Column(type: Types::STRING, length: 50)]
     private string $triggeredBy; // 'manual', 'scheduled', 'webhook', 'cli'
 
+    #[ORM\Column(type: Types::STRING, length: 50, options: ['default' => 'all'])]
+    private string $starRangeKey = 'all';
+
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $maxRepositories = null;
+
+    #[ORM\Column(type: Types::INTEGER, options: ['default' => 0])]
+    private int $syncedCount = 0;
+
     #[ORM\Column(type: Types::INTEGER, nullable: true)]
     private ?int $durationMs = null;
 
@@ -52,11 +61,15 @@ final class SyncLog
         string $correlationId,
         string $status,
         string $triggeredBy,
+        string $starRangeKey = 'all',
+        ?int $maxRepositories = null,
         DateTimeImmutable $createdAt = new DateTimeImmutable(),
     ) {
         $this->correlationId = $correlationId;
         $this->status = $status;
         $this->triggeredBy = $triggeredBy;
+        $this->starRangeKey = $starRangeKey;
+        $this->maxRepositories = $maxRepositories;
         $this->createdAt = $createdAt;
         $this->updatedAt = $createdAt;
     }
@@ -98,6 +111,45 @@ final class SyncLog
     public function getTriggeredBy(): string
     {
         return $this->triggeredBy;
+    }
+
+    public function getStarRangeKey(): string
+    {
+        return $this->starRangeKey;
+    }
+
+    public function setStarRangeKey(string $starRangeKey): self
+    {
+        $this->starRangeKey = $starRangeKey;
+        $this->updatedAt = new DateTimeImmutable();
+
+        return $this;
+    }
+
+    public function getMaxRepositories(): ?int
+    {
+        return $this->maxRepositories;
+    }
+
+    public function setMaxRepositories(?int $maxRepositories): self
+    {
+        $this->maxRepositories = $maxRepositories;
+        $this->updatedAt = new DateTimeImmutable();
+
+        return $this;
+    }
+
+    public function getSyncedCount(): int
+    {
+        return $this->syncedCount;
+    }
+
+    public function setSyncedCount(int $syncedCount): self
+    {
+        $this->syncedCount = $syncedCount;
+        $this->updatedAt = new DateTimeImmutable();
+
+        return $this;
     }
 
     public function getDurationMs(): ?int

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Dto\GitHubRepositorySearchPageResult;
 use App\Dto\GitHubRepositoryDTO;
 use App\Exception\GitHub\GitHubApiException;
 use App\Exception\GitHub\GitHubInvalidResponseException;
@@ -37,52 +38,69 @@ final class GitHubApiService
     }
 
     /**
-     * Fetches the top-starred PHP repositories from GitHub.
-     *
-     * @return array<GitHubRepositoryDTO>
+     * Fetches a single page of PHP repositories from GitHub Search.
      */
-    public function fetchTopPhpRepositories(int $limit = 100): array
+    public function searchPhpRepositoriesPage(
+        int $perPage = 100,
+        int $page = 1,
+        ?int $minStars = null,
+        ?int $maxStars = null,
+    ): GitHubRepositorySearchPageResult
     {
-        if ($limit < 1 || $limit > 100) {
-            throw new GitHubInvalidResponseException('GitHub repository fetch limit must be between 1 and 100.');
+        if ($perPage < 1 || $perPage > 100) {
+            throw new GitHubInvalidResponseException('GitHub repository page size must be between 1 and 100.');
+        }
+
+        if ($page < 1) {
+            throw new GitHubInvalidResponseException('GitHub repository page number must be greater than 0.');
         }
 
         $startedAt = microtime(true);
+        $query = [
+            'q' => $this->buildQuery('php', $minStars, $maxStars),
+            'sort' => 'stars',
+            'order' => 'desc',
+            'per_page' => $perPage,
+            'page' => $page,
+        ];
         $options = [
             'headers' => [
                 'Accept' => 'application/vnd.github.v3+json',
                 'User-Agent' => 'Stargazer-App',
             ],
             'timeout' => 10,
-            'query' => [
-                'q' => 'language:php',
-                'sort' => 'stars',
-                'order' => 'desc',
-                'per_page' => $limit,
-            ],
+            'query' => $query,
         ];
 
         if ($this->githubToken !== '') {
             $options['headers']['Authorization'] = sprintf('Bearer %s', $this->githubToken);
         }
 
-        $this->logger->info('Fetching top PHP repositories from GitHub.', [
-            'limit' => $limit,
+        $this->logger->info('Fetching PHP repositories page from GitHub.', [
+            'page' => $page,
+            'per_page' => $perPage,
+            'min_stars' => $minStars,
+            'max_stars' => $maxStars,
         ]);
 
         $attempt = 0;
 
         while (true) {
             try {
-                $dtos = $this->fetchTopPhpRepositoriesAttempt($options, $limit, $startedAt);
+                $result = $this->fetchSearchPageAttempt($options, $perPage, $page, $minStars, $maxStars, $startedAt);
 
-                $this->logger->info('Fetched top PHP repositories from GitHub.', [
-                    'limit' => $limit,
+                $this->logger->info('Fetched PHP repositories page from GitHub.', [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'min_stars' => $minStars,
+                    'max_stars' => $maxStars,
+                    'count' => count($result->repositories),
+                    'total_count' => $result->totalCount,
                     'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                     'retry_count' => $attempt,
                 ]);
 
-                return $dtos;
+                return $result;
             } catch (GitHubApiException $exception) {
                 if (!$this->shouldRetry($exception, $attempt)) {
                     throw $exception;
@@ -91,7 +109,10 @@ final class GitHubApiService
                 ++$attempt;
 
                 $this->logger->warning('Retrying GitHub API request after retryable failure.', [
-                    'limit' => $limit,
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'min_stars' => $minStars,
+                    'max_stars' => $maxStars,
                     'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                     'retry_count' => $attempt,
                     'exception_class' => $exception::class,
@@ -104,11 +125,26 @@ final class GitHubApiService
     }
 
     /**
-     * @param array<string, mixed> $options
+     * Fetches the top-starred PHP repositories from GitHub.
      *
      * @return array<GitHubRepositoryDTO>
      */
-    private function fetchTopPhpRepositoriesAttempt(array $options, int $limit, float $startedAt): array
+    public function fetchTopPhpRepositories(int $limit = 100): array
+    {
+        return $this->searchPhpRepositoriesPage($limit)->repositories;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function fetchSearchPageAttempt(
+        array $options,
+        int $perPage,
+        int $page,
+        ?int $minStars,
+        ?int $maxStars,
+        float $startedAt,
+    ): GitHubRepositorySearchPageResult
     {
         try {
             $response = $this->httpClient->request('GET', self::SEARCH_URL, $options);
@@ -118,7 +154,10 @@ final class GitHubApiService
             if ($statusCode !== 200) {
                 $exception = $this->createStatusException($statusCode);
                 $this->logger->warning('GitHub API returned an unsuccessful status code.', [
-                    'limit' => $limit,
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'min_stars' => $minStars,
+                    'max_stars' => $maxStars,
                     'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                     'status_code' => $statusCode,
                     'retryable' => $exception->isRetryable(),
@@ -131,7 +170,10 @@ final class GitHubApiService
         } catch (TransportExceptionInterface $exception) {
             $classifiedException = $this->createTransportException($exception);
             $this->logger->warning('GitHub API transport failure.', [
-                'limit' => $limit,
+                'page' => $page,
+                'per_page' => $perPage,
+                'min_stars' => $minStars,
+                'max_stars' => $maxStars,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 'exception_class' => $classifiedException::class,
                 'retryable' => $classifiedException->isRetryable(),
@@ -140,7 +182,10 @@ final class GitHubApiService
             throw $classifiedException;
         } catch (DecodingExceptionInterface $exception) {
             $this->logger->warning('GitHub API returned invalid JSON.', [
-                'limit' => $limit,
+                'page' => $page,
+                'per_page' => $perPage,
+                'min_stars' => $minStars,
+                'max_stars' => $maxStars,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             ]);
 
@@ -149,7 +194,10 @@ final class GitHubApiService
 
         if (!isset($data['items']) || !is_array($data['items'])) {
             $this->logger->warning('GitHub API response is missing repository items.', [
-                'limit' => $limit,
+                'page' => $page,
+                'per_page' => $perPage,
+                'min_stars' => $minStars,
+                'max_stars' => $maxStars,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             ]);
 
@@ -174,7 +222,17 @@ final class GitHubApiService
             );
         }
 
-        return $dtos;
+        $rateLimitRemaining = $response->getHeaders(false)['x-ratelimit-remaining'][0] ?? null;
+
+        return new GitHubRepositorySearchPageResult(
+            $dtos,
+            isset($data['total_count']) && is_numeric($data['total_count'])
+                ? (int) $data['total_count']
+                : count($dtos),
+            $page,
+            $perPage,
+            $rateLimitRemaining !== null ? (int) $rateLimitRemaining : null,
+        );
     }
 
     private function shouldRetry(GitHubApiException $exception, int $attempt): bool
@@ -258,5 +316,24 @@ final class GitHubApiService
         }
 
         return new GitHubUnavailableException('GitHub API request failed before a response was received.', retryable: true, previous: $exception);
+    }
+
+    private function buildQuery(string $language, ?int $minStars, ?int $maxStars): string
+    {
+        $query = sprintf('language:%s', $language);
+
+        if ($minStars !== null && $maxStars !== null) {
+            return sprintf('%s stars:%d..%d', $query, $minStars, $maxStars);
+        }
+
+        if ($minStars !== null) {
+            return sprintf('%s stars:>=%d', $query, $minStars);
+        }
+
+        if ($maxStars !== null) {
+            return sprintf('%s stars:<=%d', $query, $maxStars);
+        }
+
+        return $query;
     }
 }

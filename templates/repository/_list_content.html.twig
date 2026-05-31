@@ -1,4 +1,4 @@
-{% set list_state = { search: search, page: page, sort: sort, direction: direction } %}
+{% set list_state = { search: search, page: page, sort: sort, direction: direction, star_range: selected_star_range|default('all'), max_repositories: selected_max_repositories|default(100) } %}
 {% set name_direction = sort == 'name' and direction == 'asc' ? 'desc' : 'asc' %}
 {% set stars_direction = sort == 'stars' and direction == 'desc' ? 'asc' : 'desc' %}
 {% set fragment_mode = fragment_mode|default(false) %}
