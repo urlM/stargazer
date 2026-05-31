@@ -15,9 +15,10 @@
         </form>
     </div>
 
-    {% if app.flashes is not empty %}
+    {% set flashes = app.flashes %}
+    {% if flashes is not empty %}
         <section class="mb-4" aria-live="polite">
-            {% for label, messages in app.flashes %}
+            {% for label, messages in flashes %}
                 {% for message in messages %}
                     <div class="alert alert-{{ label == 'error' ? 'danger' : label }} alert-dismissible fade show" role="alert">
                         {{ message }}
