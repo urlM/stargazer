@@ -12,5 +12,5 @@ RUN docker-php-ext-configure intl && docker-php-ext-install intl
 COPY docker/install-composer.sh /tmp
 RUN /tmp/install-composer.sh
 
-# enable Apache rewrite module
-RUN a2enmod rewrite
+# enable required Apache modules
+RUN a2enmod rewrite headers
