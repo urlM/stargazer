@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Exception\GitHub\GitHubApiException;
+use App\Exception\GitHub\GitHubRateLimitException;
+use App\Exception\GitHub\GitHubUnavailableException;
 use App\Service\GitHubApiService;
 use PHPUnit\Framework\TestCase;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -63,5 +66,74 @@ final class GitHubApiServiceTest extends TestCase
         self::assertSame(30418, $dtos[0]->stars);
         self::assertSame('2011-01-12T15:38:48+00:00', $dtos[0]->createdAt->format(DATE_ATOM));
         self::assertSame('2026-05-24T11:15:00+00:00', $dtos[0]->pushedAt->format(DATE_ATOM));
+    }
+
+    public function testFetchTopPhpRepositoriesClassifiesRateLimitStatus(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->expects(self::once())
+            ->method('getStatusCode')
+            ->willReturn(429);
+
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects(self::once())
+            ->method('request')
+            ->willReturn($response);
+
+        $service = new GitHubApiService($httpClient, '');
+
+        try {
+            $service->fetchTopPhpRepositories();
+            self::fail('Expected GitHubRateLimitException to be thrown.');
+        } catch (GitHubRateLimitException $exception) {
+            self::assertSame(429, $exception->getStatusCode());
+            self::assertTrue($exception->isRetryable());
+        }
+    }
+
+    public function testFetchTopPhpRepositoriesClassifiesUnavailableStatus(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->expects(self::once())
+            ->method('getStatusCode')
+            ->willReturn(503);
+
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects(self::once())
+            ->method('request')
+            ->willReturn($response);
+
+        $service = new GitHubApiService($httpClient, '');
+
+        try {
+            $service->fetchTopPhpRepositories();
+            self::fail('Expected GitHubUnavailableException to be thrown.');
+        } catch (GitHubUnavailableException $exception) {
+            self::assertSame(503, $exception->getStatusCode());
+            self::assertTrue($exception->isRetryable());
+        }
+    }
+
+    public function testFetchTopPhpRepositoriesClassifiesGenericApiStatus(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->expects(self::once())
+            ->method('getStatusCode')
+            ->willReturn(422);
+
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects(self::once())
+            ->method('request')
+            ->willReturn($response);
+
+        $service = new GitHubApiService($httpClient, '');
+
+        try {
+            $service->fetchTopPhpRepositories();
+            self::fail('Expected GitHubApiException to be thrown.');
+        } catch (GitHubApiException $exception) {
+            self::assertSame(422, $exception->getStatusCode());
+            self::assertFalse($exception->isRetryable());
+        }
     }
 }

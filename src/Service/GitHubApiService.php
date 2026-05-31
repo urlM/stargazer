@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Dto\GitHubRepositoryDTO;
+use App\Exception\GitHub\GitHubApiException;
+use App\Exception\GitHub\GitHubRateLimitException;
+use App\Exception\GitHub\GitHubUnavailableException;
 use DateTimeImmutable;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -47,8 +50,10 @@ final class GitHubApiService
 
         $response = $this->httpClient->request('GET', self::SEARCH_URL, $options);
 
-        if ($response->getStatusCode() !== 200) {
-            throw new \RuntimeException(sprintf('GitHub API returned status code %d', $response->getStatusCode()));
+        $statusCode = $response->getStatusCode();
+
+        if ($statusCode !== 200) {
+            throw $this->createStatusException($statusCode);
         }
 
         $data = $response->toArray();
@@ -67,5 +72,29 @@ final class GitHubApiService
         }
 
         return $dtos;
+    }
+
+    private function createStatusException(int $statusCode): GitHubApiException
+    {
+        if ($statusCode === 403 || $statusCode === 429) {
+            return new GitHubRateLimitException(
+                sprintf('GitHub API rate limit or access limit returned status code %d.', $statusCode),
+                $statusCode,
+                true,
+            );
+        }
+
+        if ($statusCode >= 500) {
+            return new GitHubUnavailableException(
+                sprintf('GitHub API is temporarily unavailable and returned status code %d.', $statusCode),
+                $statusCode,
+                true,
+            );
+        }
+
+        return new GitHubApiException(
+            sprintf('GitHub API request failed with status code %d.', $statusCode),
+            $statusCode,
+        );
     }
 }
