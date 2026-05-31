@@ -154,7 +154,8 @@ final class RepositoryController extends AbstractController
      *     selected_max_repositories: int,
      *     star_range_choices: array<string, string>,
      *     max_repository_choices: list<int>,
-     *     next_page_path: string
+     *     next_page_path: string,
+     *     pagination_pages: list<int|null>
      * }
      */
     private function buildListingViewData(
@@ -203,6 +204,7 @@ final class RepositoryController extends AbstractController
             'selected_max_repositories' => $maxRepositories,
             'star_range_choices' => $syncOptions->starRangeChoices(),
             'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
+            'pagination_pages' => $this->buildPaginationPages($page, $lastPage),
             'next_page_path' => $hasNextPage
                 ? $this->generateUrl('app_repository_index', [
                     'search' => $search,
@@ -214,5 +216,43 @@ final class RepositoryController extends AbstractController
                 ])
                 : '',
         ];
+    }
+
+    /**
+     * @return list<int|null>
+     */
+    private function buildPaginationPages(int $currentPage, int $lastPage): array
+    {
+        if ($lastPage <= 7) {
+            return range(1, $lastPage);
+        }
+
+        $pages = [1];
+        $windowStart = max(2, $currentPage - 1);
+        $windowEnd = min($lastPage - 1, $currentPage + 1);
+
+        if ($currentPage <= 3) {
+            $windowEnd = 4;
+        }
+
+        if ($currentPage >= $lastPage - 2) {
+            $windowStart = $lastPage - 3;
+        }
+
+        if ($windowStart > 2) {
+            $pages[] = null;
+        }
+
+        foreach (range($windowStart, $windowEnd) as $page) {
+            $pages[] = $page;
+        }
+
+        if ($windowEnd < $lastPage - 1) {
+            $pages[] = null;
+        }
+
+        $pages[] = $lastPage;
+
+        return $pages;
     }
 }

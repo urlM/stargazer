@@ -74,6 +74,33 @@ final class RepositorySortingTest extends WebTestCase
         self::assertGreaterThanOrEqual(4, $crawler->filter('.pagination .page-link')->count());
     }
 
+    public function testFullPagePaginationCondensesLargePageRanges(): void
+    {
+        for ($index = 1; $index <= 500; ++$index) {
+            $name = sprintf('repo-%03d', $index);
+            $this->entityManager->persist($this->makeRepository((string) $index, $name, 1000 - $index));
+        }
+
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?sort=stars&direction=desc&page=13&max_repositories=500');
+
+        self::assertResponseIsSuccessful();
+
+        $pageLabels = $crawler->filter('.pagination .page-link')->each(
+            static fn ($node): string => trim($node->text())
+        );
+
+        self::assertContains('1', $pageLabels);
+        self::assertContains('12', $pageLabels);
+        self::assertContains('13', $pageLabels);
+        self::assertContains('14', $pageLabels);
+        self::assertContains('25', $pageLabels);
+        self::assertContains('…', $pageLabels);
+        self::assertNotContains('8', $pageLabels);
+        self::assertNotContains('18', $pageLabels);
+    }
+
     public function testSearchWithStalePageParamClampsBackToFirstPage(): void
     {
         $this->entityManager->persist($this->makeRepository('1', 'alpha/project', 300));

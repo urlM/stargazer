@@ -61,8 +61,12 @@
                     </li>
                 {% endif %}
 
-                {% for page in 1..pagerfanta.nbPages %}
-                    {% if page == pagerfanta.currentPage %}
+                {% for page in pagination_pages|default([]) %}
+                    {% if page is null %}
+                        <li class="page-item disabled" aria-hidden="true">
+                            <span class="page-link">&hellip;</span>
+                        </li>
+                    {% elseif page == pagerfanta.currentPage %}
                         <li class="page-item active" aria-current="page">
                             <span class="page-link">{{ page }}</span>
                         </li>
