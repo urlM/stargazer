@@ -52,6 +52,28 @@ final class RepositorySortingTest extends WebTestCase
         );
     }
 
+    public function testFullPagePaginationStillRendersNumberedPager(): void
+    {
+        for ($index = 1; $index <= 25; ++$index) {
+            $name = sprintf('repo-%02d', $index);
+            $this->entityManager->persist($this->makeRepository((string) $index, $name, 500 - $index));
+        }
+
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?sort=name&direction=asc&page=2');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['repo-21', 'repo-22', 'repo-23', 'repo-24', 'repo-25'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+        self::assertSame('2', trim($crawler->filter('.pagination .page-item.active .page-link')->text()));
+        self::assertGreaterThanOrEqual(4, $crawler->filter('.pagination .page-link')->count());
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(

@@ -34,7 +34,7 @@ final class RepositoryInfiniteScrollTest extends WebTestCase
         unset($this->entityManager);
     }
 
-    public function testFragmentResponseReturnsNextPageMarkupWithPreservedState(): void
+    public function testFragmentResponseReturnsSlimPayloadWithPreservedState(): void
     {
         for ($index = 1; $index <= 25; ++$index) {
             $name = sprintf('repo-%02d', $index);
@@ -47,6 +47,9 @@ final class RepositoryInfiniteScrollTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertStringNotContainsString('<html', (string) $this->client->getResponse()->getContent());
+        self::assertCount(0, $crawler->filter('[data-infinite-content]'));
+        self::assertCount(0, $crawler->filter('[data-pagination]'));
+        self::assertCount(0, $crawler->filter('thead'));
         self::assertCount(5, $crawler->filter('tbody tr[data-repository-id]'));
         self::assertSame(
             ['repo-21', 'repo-22', 'repo-23', 'repo-24', 'repo-25'],
@@ -54,7 +57,27 @@ final class RepositoryInfiniteScrollTest extends WebTestCase
                 static fn ($node): string => trim($node->text())
             ),
         );
-        self::assertSame('', $crawler->filter('[data-pagination]')->attr('data-next-page-url'));
+        self::assertSame('', $crawler->filter('[data-infinite-fragment]')->attr('data-next-page-url'));
+    }
+
+    public function testFragmentResponseExposesNextPageUrlWithoutTotalPagerMarkup(): void
+    {
+        for ($index = 1; $index <= 45; ++$index) {
+            $name = sprintf('repo-%02d', $index);
+            $this->entityManager->persist($this->makeRepository((string) $index, $name, 500 - $index));
+        }
+
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?_fragment=1&page=2&sort=name&direction=asc&search=repo');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(20, $crawler->filter('tbody tr[data-repository-id]'));
+        self::assertSame(
+            '/?search=repo&page=3&sort=name&direction=asc',
+            $crawler->filter('[data-infinite-fragment]')->attr('data-next-page-url'),
+        );
+        self::assertCount(0, $crawler->filter('.pagination'));
     }
 
     private function makeRepository(string $id, string $name, int $stars): Repository
