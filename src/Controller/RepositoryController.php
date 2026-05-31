@@ -8,7 +8,7 @@ use App\Message\SyncRepositoriesMessage;
 use App\Repository\RepositoryRepository;
 use App\Service\RepositoryQueryBuilder;
 use App\Service\RepositorySyncOptions;
-use Pagerfanta\Adapter\CallbackAdapter;
+use Pagerfanta\Adapter\FixedAdapter;
 use Pagerfanta\Pagerfanta;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -30,59 +30,23 @@ final class RepositoryController extends AbstractController
         RepositoryQueryBuilder $queryBuilder,
         RepositorySyncOptions $syncOptions,
     ): Response {
-        $page = $request->query->getInt('page', 1);
-        $search = $request->query->getString('search', '');
-        $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
-        $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
         $starRangeKey = $syncOptions->normalizeStarRangeKey($request->query->getString('star_range', RepositorySyncOptions::DEFAULT_STAR_RANGE));
         $maxRepositories = $syncOptions->normalizeMaxRepositories($request->query->getInt('max_repositories', RepositorySyncOptions::DEFAULT_MAX_REPOSITORIES));
+        $viewData = $this->buildListingViewData(
+            $request,
+            $queryBuilder,
+            $syncOptions,
+            $starRangeKey,
+            $maxRepositories,
+            $request->query->getBoolean('_fragment'),
+        );
 
         if ($request->query->getBoolean('_fragment')) {
             return $this->render(
                 'repository/_fragment_content.html.twig',
-                $this->buildFragmentViewData($queryBuilder, $search, $sort, $direction, $page),
+                $viewData,
             );
         }
-
-        $totalResults = $queryBuilder->countRepositories($search);
-        $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
-        $page = min(max(1, $page), $lastPage);
-
-        $adapter = new CallbackAdapter(
-            static function () use ($totalResults): int {
-                return $totalResults;
-            },
-            static function (int $offset, int $length) use ($queryBuilder, $search, $sort, $direction): iterable {
-                return $queryBuilder->findRepositoryListItems($search, $sort, $direction, $length, $offset);
-            },
-        );
-        $pagerfanta = new Pagerfanta($adapter);
-        $pagerfanta->setMaxPerPage(self::PER_PAGE);
-        $pagerfanta->setCurrentPage($page);
-
-        $viewData = [
-            'repositories' => $pagerfanta->getCurrentPageResults(),
-            'pagerfanta' => $pagerfanta,
-            'search' => $search,
-            'page' => $page,
-            'sort' => $sort,
-            'direction' => $direction,
-            'fragment_mode' => false,
-            'selected_star_range' => $starRangeKey,
-            'selected_max_repositories' => $maxRepositories,
-            'star_range_choices' => $syncOptions->starRangeChoices(),
-            'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
-            'next_page_path' => $pagerfanta->hasNextPage()
-                ? $this->generateUrl('app_repository_index', [
-                    'search' => $search,
-                    'page' => $pagerfanta->getNextPage(),
-                    'sort' => $sort,
-                    'direction' => $direction,
-                    'star_range' => $starRangeKey,
-                    'max_repositories' => $maxRepositories,
-                ])
-                : '',
-        ];
 
         return $this->render('repository/index.html.twig', $viewData);
     }
@@ -179,46 +143,74 @@ final class RepositoryController extends AbstractController
 
     /**
      * @return array{
-     *     repositories: list<array{id: string, name: string, stars: int|string}>,
-     *     pagerfanta: null,
+     *     repositories: iterable<array{id: string, name: string, stars: int|string}>,
+     *     pagerfanta: Pagerfanta<array{id: string, name: string, stars: int|string}>|null,
      *     search: string,
      *     page: int,
      *     sort: string,
      *     direction: string,
-     *     fragment_mode: true,
+     *     fragment_mode: bool,
+     *     selected_star_range: string,
+     *     selected_max_repositories: int,
+     *     star_range_choices: array<string, string>,
+     *     max_repository_choices: list<int>,
      *     next_page_path: string
      * }
      */
-    private function buildFragmentViewData(
+    private function buildListingViewData(
+        Request $request,
         RepositoryQueryBuilder $queryBuilder,
-        string $search,
-        string $sort,
-        string $direction,
-        int $page,
+        RepositorySyncOptions $syncOptions,
+        string $starRangeKey,
+        int $maxRepositories,
+        bool $fragmentMode,
     ): array {
-        $page = max(1, $page);
+        $search = $request->query->getString('search', '');
+        $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
+        $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
+        $scope = $syncOptions->resolvedStarRangeScope($starRangeKey);
+        $totalResults = $queryBuilder->countRepositories($search, $scope, $maxRepositories);
+        $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
+        $page = min(max(1, $request->query->getInt('page', 1)), $lastPage);
         $offset = ($page - 1) * self::PER_PAGE;
-        $results = $queryBuilder->findRepositoryListItems($search, $sort, $direction, self::PER_PAGE + 1, $offset);
-        $hasNextPage = count($results) > self::PER_PAGE;
+        $repositories = $queryBuilder->findRepositoryListItems(
+            $search,
+            $sort,
+            $direction,
+            self::PER_PAGE,
+            $offset,
+            $scope,
+            $maxRepositories,
+        );
+        $hasNextPage = $page < $lastPage;
+        $pagerfanta = null;
 
-        if ($hasNextPage) {
-            $results = array_slice($results, 0, self::PER_PAGE);
+        if (!$fragmentMode) {
+            $pagerfanta = new Pagerfanta(new FixedAdapter($totalResults, $repositories));
+            $pagerfanta->setMaxPerPage(self::PER_PAGE);
+            $pagerfanta->setCurrentPage($page);
         }
 
         return [
-            'repositories' => $results,
-            'pagerfanta' => null,
+            'repositories' => $pagerfanta?->getCurrentPageResults() ?? $repositories,
+            'pagerfanta' => $pagerfanta,
             'search' => $search,
             'page' => $page,
             'sort' => $sort,
             'direction' => $direction,
-            'fragment_mode' => true,
+            'fragment_mode' => $fragmentMode,
+            'selected_star_range' => $starRangeKey,
+            'selected_max_repositories' => $maxRepositories,
+            'star_range_choices' => $syncOptions->starRangeChoices(),
+            'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
             'next_page_path' => $hasNextPage
                 ? $this->generateUrl('app_repository_index', [
                     'search' => $search,
                     'page' => $page + 1,
                     'sort' => $sort,
                     'direction' => $direction,
+                    'star_range' => $starRangeKey,
+                    'max_repositories' => $maxRepositories,
                 ])
                 : '',
         ];

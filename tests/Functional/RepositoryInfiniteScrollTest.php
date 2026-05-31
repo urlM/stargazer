@@ -74,10 +74,36 @@ final class RepositoryInfiniteScrollTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertCount(20, $crawler->filter('tbody tr[data-repository-id]'));
         self::assertSame(
-            '/?search=repo&page=3&sort=name&direction=asc',
+            '/?search=repo&page=3&sort=name&direction=asc&star_range=all&max_repositories=100',
             $crawler->filter('[data-infinite-fragment]')->attr('data-next-page-url'),
         );
         self::assertCount(0, $crawler->filter('.pagination'));
+    }
+
+    public function testFragmentResponseUsesSharedScopedInputsAndPreservesNextPageState(): void
+    {
+        for ($index = 1; $index <= 25; ++$index) {
+            $name = sprintf('repo-%02d', $index);
+            $this->entityManager->persist($this->makeRepository((string) $index, $name, 6000 - $index));
+        }
+
+        $this->entityManager->persist($this->makeRepository('100', 'outside/scope', 12000));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?_fragment=1&page=1&sort=name&direction=asc&search=repo&star_range=5000_9999&max_repositories=100');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(20, $crawler->filter('tbody tr[data-repository-id]'));
+        self::assertSame(
+            ['repo-01', 'repo-02', 'repo-03', 'repo-04', 'repo-05', 'repo-06', 'repo-07', 'repo-08', 'repo-09', 'repo-10', 'repo-11', 'repo-12', 'repo-13', 'repo-14', 'repo-15', 'repo-16', 'repo-17', 'repo-18', 'repo-19', 'repo-20'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+        self::assertSame(
+            '/?search=repo&page=2&sort=name&direction=asc&star_range=5000_9999&max_repositories=100',
+            $crawler->filter('[data-infinite-fragment]')->attr('data-next-page-url'),
+        );
     }
 
     private function makeRepository(string $id, string $name, int $stars): Repository

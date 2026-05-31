@@ -94,6 +94,27 @@ final class RepositorySortingTest extends WebTestCase
         self::assertCount(0, $crawler->filter('.pagination .page-item.active'));
     }
 
+    public function testFullPageUsesScopedFixedDatasetInputsForAlternateSorts(): void
+    {
+        $this->entityManager->persist($this->makeRepository('1', 'omega/out-of-scope', 12000));
+        $this->entityManager->persist($this->makeRepository('2', 'zeta/top-scoped', 7500));
+        $this->entityManager->persist($this->makeRepository('3', 'alpha/second-scoped', 5200));
+        $this->entityManager->persist($this->makeRepository('4', 'beta/third-scoped', 5100));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?sort=name&direction=asc&star_range=5000_9999&max_repositories=100');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['alpha/second-scoped', 'beta/third-scoped', 'zeta/top-scoped'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+        self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
+        self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(
