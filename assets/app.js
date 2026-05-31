@@ -1,3 +1,5 @@
+import 'bootstrap';
+import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles/app.css';
 
 const FRAGMENT_SELECTOR = '[data-infinite-content]';
