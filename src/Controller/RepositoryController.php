@@ -13,7 +13,7 @@ use App\Repository\RepositoryRepository;
 use App\Service\GitHubApiService;
 use App\Service\RepositoryQueryBuilder;
 use App\Service\RepositorySyncService;
-use Pagerfanta\Doctrine\ORM\QueryAdapter;
+use Pagerfanta\Adapter\CallbackAdapter;
 use Pagerfanta\Pagerfanta;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -37,9 +37,27 @@ final class RepositoryController extends AbstractController
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
 
-        // Create paginated query
         $qb = $queryBuilder->createListQueryBuilder($search, $sort, $direction);
-        $adapter = new QueryAdapter($qb);
+        $adapter = new CallbackAdapter(
+            static function () use ($qb): int {
+                $countQb = clone $qb;
+
+                return (int) $countQb
+                    ->select('COUNT(repository.id)')
+                    ->resetDQLPart('orderBy')
+                    ->getQuery()
+                    ->getSingleScalarResult();
+            },
+            static function (int $offset, int $length) use ($qb): iterable {
+                $resultsQb = clone $qb;
+
+                return $resultsQb
+                    ->setFirstResult($offset)
+                    ->setMaxResults($length)
+                    ->getQuery()
+                    ->getResult();
+            },
+        );
         $pagerfanta = new Pagerfanta($adapter);
         $pagerfanta->setMaxPerPage(20);
         $pagerfanta->setCurrentPage($page);
