@@ -142,7 +142,7 @@ final class RepositorySortingTest extends WebTestCase
         self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
         self::assertStringContainsString(
             'Showing stored results for 5,000–9,999 stars within the top 100 repositories captured during the latest refresh.',
-            $crawler->filter('[data-infinite-content]')->text()
+            $crawler->filter('main')->text()
         );
     }
 
@@ -297,7 +297,7 @@ final class RepositorySortingTest extends WebTestCase
         self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
         self::assertStringContainsString(
             "Showing stored results for 5,000\u{2013}9,999 stars within the top 100 repositories captured during the latest refresh.",
-            $crawler->filter('[data-infinite-content]')->text()
+            $crawler->filter('main')->text()
         );
     }
 

@@ -1,12 +1,8 @@
 {% set list_state = { search: search, page: page, sort: sort, direction: direction, star_range: selected_star_range|default('all'), max_repositories: selected_max_repositories|default(100) } %}
 {% set name_direction = sort == 'name' and direction == 'asc' ? 'desc' : 'asc' %}
 {% set stars_direction = sort == 'stars' and direction == 'desc' ? 'asc' : 'desc' %}
-{% set fragment_mode = fragment_mode|default(false) %}
 {% set scope_label = star_range_choices[selected_star_range|default('all')] ?? 'All stars' %}
-{% if next_page_path is not defined %}
-    {% set next_page_path = pagerfanta is not null and pagerfanta.hasNextPage ? path('app_repository_index', list_state|merge({page: pagerfanta.nextPage})) : '' %}
-{% endif %}
-<div data-infinite-content>
+<div>
     <p class="small text-muted mb-3">
         Showing stored results for {{ scope_label }} within the top {{ selected_max_repositories|default(100)|number_format }} repositories captured during the latest refresh.
     </p>
@@ -46,9 +42,7 @@
         </table>
     </div>
 
-    {% if fragment_mode %}
-        <div data-pagination data-next-page-url="{{ next_page_path }}"></div>
-    {% elseif pagerfanta.nbPages > 1 %}
+    {% if pagerfanta.nbPages > 1 %}
         <nav class="mt-4" aria-label="Pagination" data-pagination data-next-page-url="{{ next_page_path }}">
             <ul class="pagination justify-content-center">
                 {% if pagerfanta.hasPreviousPage %}
@@ -88,11 +82,5 @@
                 {% endif %}
             </ul>
         </nav>
-    {% else %}
-        <div data-pagination data-next-page-url=""></div>
     {% endif %}
-
-    <div class="mt-3 small text-muted" data-infinite-status aria-live="polite"></div>
-    <div class="alert alert-warning mt-3 d-none" data-infinite-error role="status"></div>
-    <div class="repository-scroll-sentinel" data-infinite-sentinel {% if next_page_path == '' %}hidden{% endif %}></div>
 </div>
