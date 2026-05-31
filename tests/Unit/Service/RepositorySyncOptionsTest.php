@@ -17,7 +17,7 @@ final class RepositorySyncOptionsTest extends TestCase
 
         self::assertInstanceOf(ResolvedStarRangeScope::class, $scope);
         self::assertSame('5000_9999', $scope->key);
-        self::assertSame('5,000Ã¢â‚¬â€œ9,999 stars', $scope->label);
+        self::assertSame("5,000\u{2013}9,999 stars", $scope->label);
         self::assertSame(5000, $scope->min);
         self::assertSame(9999, $scope->max);
         self::assertSame([
@@ -31,7 +31,7 @@ final class RepositorySyncOptionsTest extends TestCase
 
         self::assertSame([
             'key' => '5000_9999',
-            'label' => '5,000â€“9,999 stars',
+            'label' => "5,000\u{2013}9,999 stars",
             'min' => 5000,
             'max' => 9999,
             'seeds' => [
