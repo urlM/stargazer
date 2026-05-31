@@ -3,14 +3,46 @@ services:
   web:
     build:
       dockerfile: ./Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
     ports:
       - "8080:80"
     volumes:
       - ./docker/apache.conf:/etc/apache2/sites-available/000-default.conf
       - .:/var/www/
     working_dir: /var/www
+  worker:
+    build:
+      dockerfile: ./Dockerfile
+    command:
+      - php
+      - bin/console
+      - messenger:consume
+      - async
+      - --time-limit=3600
+      - --memory-limit=128M
+      - --no-interaction
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/
+    working_dir: /var/www
   redis:
     image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -23,6 +55,12 @@ services:
       MYSQL_ROOT_PASSWORD: ''
       MYSQL_ALLOW_EMPTY_PASSWORD: yes
       MYSQL_DATABASE: app
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     ports:
       - "8306:3306"
     volumes:
