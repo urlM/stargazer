@@ -37,18 +37,7 @@
                 </tr>
             </thead>
             <tbody data-repository-rows>
-                {% for repo in repositories %}
-                    <tr data-repository-id="{{ repo.id }}">
-                        <td>
-                            <a href="{{ path('app_repository_show', {id: repo.id}) }}">{{ repo.name }}</a>
-                        </td>
-                        <td>{{ repo.stars|number_format }}</td>
-                    </tr>
-                {% else %}
-                    <tr>
-                        <td colspan="2">No repositories found. {% if search %}Try a different search.{% else %}Please run a sync.{% endif %}</td>
-                    </tr>
-                {% endfor %}
+                {% include 'repository/_rows.html.twig' %}
             </tbody>
         </table>
     </div>

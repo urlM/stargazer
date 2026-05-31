@@ -34,13 +34,10 @@ final class RepositoryController extends AbstractController
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
 
         if ($request->query->getBoolean('_fragment')) {
-            return $this->render('repository/_list_content.html.twig', $this->buildFragmentViewData(
-                $queryBuilder,
-                $search,
-                $sort,
-                $direction,
-                $page,
-            ));
+            return $this->render(
+                'repository/_fragment_content.html.twig',
+                $this->buildFragmentViewData($queryBuilder, $search, $sort, $direction, $page),
+            );
         }
 
         $adapter = new CallbackAdapter(

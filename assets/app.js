@@ -2,7 +2,7 @@ import 'bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles/app.css';
 
-const FRAGMENT_SELECTOR = '[data-infinite-content]';
+const FRAGMENT_SELECTOR = '[data-infinite-fragment]';
 const LISTING_SELECTOR = '[data-infinite-scroll]';
 const ROWS_SELECTOR = '[data-repository-rows]';
 const ROW_SELECTOR = '[data-repository-id]';
@@ -138,17 +138,7 @@ function initializeInfiniteScroll(listing) {
     }
 
     function replacePagination(fragment) {
-        const nextPagination = fragment.querySelector(PAGINATION_SELECTOR);
-
-        if (!(nextPagination instanceof HTMLElement)) {
-            nextPageUrl = '';
-            pagination.dataset.nextPageUrl = '';
-
-            return;
-        }
-
-        pagination.innerHTML = nextPagination.innerHTML;
-        pagination.dataset.nextPageUrl = nextPagination.dataset.nextPageUrl ?? '';
+        pagination.dataset.nextPageUrl = fragment.dataset.nextPageUrl ?? '';
         nextPageUrl = pagination.dataset.nextPageUrl ?? '';
     }
 
