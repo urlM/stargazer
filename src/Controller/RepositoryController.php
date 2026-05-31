@@ -32,25 +32,12 @@ final class RepositoryController extends AbstractController
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
 
-        $qb = $queryBuilder->createListQueryBuilder($search, $sort, $direction);
         $adapter = new CallbackAdapter(
-            static function () use ($qb): int {
-                $countQb = clone $qb;
-
-                return (int) $countQb
-                    ->select('COUNT(repository.id)')
-                    ->resetDQLPart('orderBy')
-                    ->getQuery()
-                    ->getSingleScalarResult();
+            static function () use ($queryBuilder, $search): int {
+                return $queryBuilder->countRepositories($search);
             },
-            static function (int $offset, int $length) use ($qb): iterable {
-                $resultsQb = clone $qb;
-
-                return $resultsQb
-                    ->setFirstResult($offset)
-                    ->setMaxResults($length)
-                    ->getQuery()
-                    ->getResult();
+            static function (int $offset, int $length) use ($queryBuilder, $search, $sort, $direction): iterable {
+                return $queryBuilder->findRepositoryListItems($search, $sort, $direction, $length, $offset);
             },
         );
         $pagerfanta = new Pagerfanta($adapter);

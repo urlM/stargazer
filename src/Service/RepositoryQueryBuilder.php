@@ -13,6 +13,8 @@ use Doctrine\ORM\QueryBuilder;
  */
 final class RepositoryQueryBuilder
 {
+    private const VALID_SORT_FIELDS = ['stars', 'created_at', 'pushed_at', 'name'];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SearchQueryNormalizer $searchQueryNormalizer,
@@ -33,27 +35,74 @@ final class RepositoryQueryBuilder
         string $sortBy = 'stars',
         string $sortDirection = 'DESC',
     ): QueryBuilder {
+        $qb = $this->createBaseQueryBuilder($search);
+
+        return $this->applySorting($qb, $sortBy, $sortDirection)
+            ->select('repository');
+    }
+
+    /**
+     * Creates a lightweight query builder for repository list rows.
+     *
+     * @return QueryBuilder The configured query builder returning scalar list fields.
+     */
+    public function createListItemsQueryBuilder(
+        ?string $search = null,
+        string $sortBy = 'stars',
+        string $sortDirection = 'DESC',
+    ): QueryBuilder {
+        $qb = $this->createBaseQueryBuilder($search);
+
+        return $this->applySorting($qb, $sortBy, $sortDirection)
+            ->select('repository.id AS id', 'repository.name AS name', 'repository.stars AS stars');
+    }
+
+    /**
+     * Finds lightweight repository list rows by list criteria.
+     *
+     * @return list<array{id: string, name: string, stars: int|string}>
+     */
+    public function findRepositoryListItems(
+        ?string $search = null,
+        string $sortBy = 'stars',
+        string $sortDirection = 'DESC',
+        int $limit = 100,
+        int $offset = 0,
+    ): array {
+        return $this->createListItemsQueryBuilder($search, $sortBy, $sortDirection)
+            ->setMaxResults($limit)
+            ->setFirstResult($offset)
+            ->getQuery()
+            ->getArrayResult();
+    }
+
+    private function createBaseQueryBuilder(?string $search = null): QueryBuilder
+    {
         $qb = $this->entityManager->createQueryBuilder()
-            ->select('repository')
             ->from(Repository::class, 'repository');
 
-        // Apply search filter if provided
-        if ($search !== null) {
-            $normalizedSearch = $this->searchQueryNormalizer->normalize($search);
-            if ($normalizedSearch !== null) {
-                $qb->andWhere(
-                    $qb->expr()->orX(
-                        $qb->expr()->like('LOWER(repository.name)', ':search'),
-                        $qb->expr()->like('LOWER(repository.description)', ':search')
-                    )
-                )
-                    ->setParameter('search', '%' . $normalizedSearch . '%');
-            }
+        if ($search === null) {
+            return $qb;
         }
 
-        // Apply sorting
-        $validSortFields = ['stars', 'created_at', 'pushed_at', 'name'];
-        if (!in_array($sortBy, $validSortFields, true)) {
+        $normalizedSearch = $this->searchQueryNormalizer->normalize($search);
+        if ($normalizedSearch === null) {
+            return $qb;
+        }
+
+        return $qb
+            ->andWhere(
+                $qb->expr()->orX(
+                    $qb->expr()->like('LOWER(repository.name)', ':search'),
+                    $qb->expr()->like('LOWER(repository.description)', ':search')
+                )
+            )
+            ->setParameter('search', '%' . $normalizedSearch . '%');
+    }
+
+    private function applySorting(QueryBuilder $qb, string $sortBy, string $sortDirection): QueryBuilder
+    {
+        if (!in_array($sortBy, self::VALID_SORT_FIELDS, true)) {
             $sortBy = 'stars';
         }
 
@@ -103,7 +152,7 @@ final class RepositoryQueryBuilder
      */
     public function countRepositories(?string $search = null): int
     {
-        $qb = $this->createListQueryBuilder($search);
+        $qb = $this->createBaseQueryBuilder($search);
 
         return (int) $qb
             ->select('COUNT(repository.id)')
