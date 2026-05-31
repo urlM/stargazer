@@ -1,7 +1,10 @@
 {% set list_state = { search: search, page: page, sort: sort, direction: direction } %}
 {% set name_direction = sort == 'name' and direction == 'asc' ? 'desc' : 'asc' %}
 {% set stars_direction = sort == 'stars' and direction == 'desc' ? 'asc' : 'desc' %}
-{% set next_page_path = pagerfanta.hasNextPage ? path('app_repository_index', list_state|merge({page: pagerfanta.nextPage})) : '' %}
+{% set fragment_mode = fragment_mode|default(false) %}
+{% if next_page_path is not defined %}
+    {% set next_page_path = pagerfanta is not null and pagerfanta.hasNextPage ? path('app_repository_index', list_state|merge({page: pagerfanta.nextPage})) : '' %}
+{% endif %}
 <div data-infinite-content>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -50,7 +53,9 @@
         </table>
     </div>
 
-    {% if pagerfanta.nbPages > 1 %}
+    {% if fragment_mode %}
+        <div data-pagination data-next-page-url="{{ next_page_path }}"></div>
+    {% elseif pagerfanta.nbPages > 1 %}
         <nav class="mt-4" aria-label="Pagination" data-pagination data-next-page-url="{{ next_page_path }}">
             <ul class="pagination justify-content-center">
                 {% if pagerfanta.hasPreviousPage %}

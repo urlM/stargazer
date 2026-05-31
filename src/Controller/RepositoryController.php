@@ -18,6 +18,7 @@ use Symfony\Component\Routing\Annotation\Route;
 
 final class RepositoryController extends AbstractController
 {
+    private const PER_PAGE = 20;
     private const DEFAULT_SORT = 'stars';
     private const DEFAULT_DIRECTION = 'desc';
     private const ALLOWED_SORTS = ['stars', 'name', 'created_at', 'pushed_at'];
@@ -32,6 +33,16 @@ final class RepositoryController extends AbstractController
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
 
+        if ($request->query->getBoolean('_fragment')) {
+            return $this->render('repository/_list_content.html.twig', $this->buildFragmentViewData(
+                $queryBuilder,
+                $search,
+                $sort,
+                $direction,
+                $page,
+            ));
+        }
+
         $adapter = new CallbackAdapter(
             static function () use ($queryBuilder, $search): int {
                 return $queryBuilder->countRepositories($search);
@@ -41,7 +52,7 @@ final class RepositoryController extends AbstractController
             },
         );
         $pagerfanta = new Pagerfanta($adapter);
-        $pagerfanta->setMaxPerPage(20);
+        $pagerfanta->setMaxPerPage(self::PER_PAGE);
         $pagerfanta->setCurrentPage($page);
 
         $viewData = [
@@ -51,11 +62,16 @@ final class RepositoryController extends AbstractController
             'page' => $page,
             'sort' => $sort,
             'direction' => $direction,
+            'fragment_mode' => false,
+            'next_page_path' => $pagerfanta->hasNextPage()
+                ? $this->generateUrl('app_repository_index', [
+                    'search' => $search,
+                    'page' => $pagerfanta->getNextPage(),
+                    'sort' => $sort,
+                    'direction' => $direction,
+                ])
+                : '',
         ];
-
-        if ($request->query->getBoolean('_fragment')) {
-            return $this->render('repository/_list_content.html.twig', $viewData);
-        }
 
         return $this->render('repository/index.html.twig', $viewData);
     }
@@ -132,5 +148,52 @@ final class RepositoryController extends AbstractController
     private function normalizeDirection(string $direction): string
     {
         return mb_strtolower($direction) === 'asc' ? 'asc' : 'desc';
+    }
+
+    /**
+     * @return array{
+     *     repositories: list<array{id: string, name: string, stars: int|string}>,
+     *     pagerfanta: null,
+     *     search: string,
+     *     page: int,
+     *     sort: string,
+     *     direction: string,
+     *     fragment_mode: true,
+     *     next_page_path: string
+     * }
+     */
+    private function buildFragmentViewData(
+        RepositoryQueryBuilder $queryBuilder,
+        string $search,
+        string $sort,
+        string $direction,
+        int $page,
+    ): array {
+        $page = max(1, $page);
+        $offset = ($page - 1) * self::PER_PAGE;
+        $results = $queryBuilder->findRepositoryListItems($search, $sort, $direction, self::PER_PAGE + 1, $offset);
+        $hasNextPage = count($results) > self::PER_PAGE;
+
+        if ($hasNextPage) {
+            $results = array_slice($results, 0, self::PER_PAGE);
+        }
+
+        return [
+            'repositories' => $results,
+            'pagerfanta' => null,
+            'search' => $search,
+            'page' => $page,
+            'sort' => $sort,
+            'direction' => $direction,
+            'fragment_mode' => true,
+            'next_page_path' => $hasNextPage
+                ? $this->generateUrl('app_repository_index', [
+                    'search' => $search,
+                    'page' => $page + 1,
+                    'sort' => $sort,
+                    'direction' => $direction,
+                ])
+                : '',
+        ];
     }
 }
