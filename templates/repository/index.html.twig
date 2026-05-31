@@ -29,6 +29,17 @@
         </section>
     {% endif %}
 
+    <!-- Search Form -->
+    <div class="mb-4">
+        <form method="GET" action="{{ path('app_repository_index') }}" class="d-flex gap-2">
+            <input type="text" name="search" class="form-control" placeholder="Search repositories..." value="{{ search }}">
+            <button type="submit" class="btn btn-outline-secondary">Search</button>
+            {% if search %}
+                <a href="{{ path('app_repository_index') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
         <thead>
@@ -47,11 +58,50 @@
                 </tr>
             {% else %}
                 <tr>
-                    <td colspan="2">No repositories found in the database. Please run a sync.</td>
+                    <td colspan="2">No repositories found. {% if search %}Try a different search.{% else %}Please run a sync.{% endif %}</td>
                 </tr>
             {% endfor %}
         </tbody>
     </table>
     </div>
+
+    <!-- Pagination -->
+    {% if pagerfanta.nbPages > 1 %}
+    <nav class="mt-4" aria-label="Pagination">
+        <ul class="pagination justify-content-center">
+            {% if pagerfanta.hasPreviousPage %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ path('app_repository_index', {page: pagerfanta.previousPage, search: search}) }}">Previous</a>
+                </li>
+            {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Previous</span>
+                </li>
+            {% endif %}
+
+            {% for page in 1..pagerfanta.nbPages %}
+                {% if page == pagerfanta.currentPage %}
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">{{ page }}</span>
+                    </li>
+                {% else %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ path('app_repository_index', {page: page, search: search}) }}">{{ page }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if pagerfanta.hasNextPage %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ path('app_repository_index', {page: pagerfanta.nextPage, search: search}) }}">Next</a>
+                </li>
+            {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Next</span>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
 </main>
 {% endblock %}

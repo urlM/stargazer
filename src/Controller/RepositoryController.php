@@ -11,7 +11,11 @@ use App\Exception\GitHub\GitHubTimeoutException;
 use App\Exception\GitHub\GitHubUnavailableException;
 use App\Repository\RepositoryRepository;
 use App\Service\GitHubApiService;
+use App\Service\RepositoryQueryBuilder;
 use App\Service\RepositorySyncService;
+use BabDev\PagerfantaBundle\Attribute\Pagerfanta as PagerfantaAttribute;
+use Pagerfanta\Doctrine\ORM\QueryAdapter;
+use Pagerfanta\Pagerfanta;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,10 +25,25 @@ use Symfony\Component\Routing\Annotation\Route;
 final class RepositoryController extends AbstractController
 {
     #[Route('/', name: 'app_repository_index', methods: ['GET'])]
-    public function index(RepositoryRepository $repositoryRepository): Response
-    {
+    public function index(
+        Request $request,
+        RepositoryRepository $repositoryRepository,
+        RepositoryQueryBuilder $queryBuilder,
+    ): Response {
+        $page = $request->query->getInt('page', 1);
+        $search = $request->query->getString('search', '');
+
+        // Create paginated query
+        $qb = $queryBuilder->createListQueryBuilder($search);
+        $adapter = new QueryAdapter($qb);
+        $pagerfanta = new Pagerfanta($adapter);
+        $pagerfanta->setMaxPerPage(20);
+        $pagerfanta->setCurrentPage($page);
+
         return $this->render('repository/index.html.twig', [
-            'repositories' => $repositoryRepository->findTopRepositories(),
+            'repositories' => $pagerfanta->getCurrentPageResults(),
+            'pagerfanta' => $pagerfanta,
+            'search' => $search,
         ]);
     }
 
