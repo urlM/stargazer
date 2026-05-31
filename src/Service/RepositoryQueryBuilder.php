@@ -34,8 +34,9 @@ final class RepositoryQueryBuilder
         ?string $search = null,
         string $sortBy = 'stars',
         string $sortDirection = 'DESC',
+        ?ResolvedStarRangeScope $scope = null,
     ): QueryBuilder {
-        $qb = $this->createBaseQueryBuilder($search);
+        $qb = $this->createBaseQueryBuilder($search, $scope);
 
         return $this->applySorting($qb, $sortBy, $sortDirection)
             ->select('repository');
@@ -50,8 +51,9 @@ final class RepositoryQueryBuilder
         ?string $search = null,
         string $sortBy = 'stars',
         string $sortDirection = 'DESC',
+        ?ResolvedStarRangeScope $scope = null,
     ): QueryBuilder {
-        $qb = $this->createBaseQueryBuilder($search);
+        $qb = $this->createBaseQueryBuilder($search, $scope);
 
         return $this->applySorting($qb, $sortBy, $sortDirection)
             ->select('repository.id AS id', 'repository.name AS name', 'repository.stars AS stars');
@@ -68,18 +70,27 @@ final class RepositoryQueryBuilder
         string $sortDirection = 'DESC',
         int $limit = 100,
         int $offset = 0,
+        ?ResolvedStarRangeScope $scope = null,
+        ?int $maxRepositories = null,
     ): array {
-        return $this->createListItemsQueryBuilder($search, $sortBy, $sortDirection)
-            ->setMaxResults($limit)
+        $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $maxRepositories);
+        if ($effectiveLimit === 0) {
+            return [];
+        }
+
+        return $this->createListItemsQueryBuilder($search, $sortBy, $sortDirection, $scope)
+            ->setMaxResults($effectiveLimit)
             ->setFirstResult($offset)
             ->getQuery()
             ->getArrayResult();
     }
 
-    private function createBaseQueryBuilder(?string $search = null): QueryBuilder
+    private function createBaseQueryBuilder(?string $search = null, ?ResolvedStarRangeScope $scope = null): QueryBuilder
     {
         $qb = $this->entityManager->createQueryBuilder()
             ->from(Repository::class, 'repository');
+
+        $this->applyScope($qb, $scope);
 
         if ($search === null) {
             return $qb;
@@ -98,6 +109,21 @@ final class RepositoryQueryBuilder
                 )
             )
             ->setParameter('search', '%' . $normalizedSearch . '%');
+    }
+
+    private function applyScope(QueryBuilder $qb, ?ResolvedStarRangeScope $scope): void
+    {
+        if ($scope === null) {
+            return;
+        }
+
+        $qb->andWhere('repository.stars >= :scope_min_stars')
+            ->setParameter('scope_min_stars', $scope->min);
+
+        if ($scope->max !== null) {
+            $qb->andWhere('repository.stars <= :scope_max_stars')
+                ->setParameter('scope_max_stars', $scope->max);
+        }
     }
 
     private function applySorting(QueryBuilder $qb, string $sortBy, string $sortDirection): QueryBuilder
@@ -135,9 +161,16 @@ final class RepositoryQueryBuilder
         string $sortDirection = 'DESC',
         int $limit = 100,
         int $offset = 0,
+        ?ResolvedStarRangeScope $scope = null,
+        ?int $maxRepositories = null,
     ): array {
-        return $this->createListQueryBuilder($search, $sortBy, $sortDirection)
-            ->setMaxResults($limit)
+        $effectiveLimit = $this->resolveEffectiveLimit($limit, $offset, $maxRepositories);
+        if ($effectiveLimit === 0) {
+            return [];
+        }
+
+        return $this->createListQueryBuilder($search, $sortBy, $sortDirection, $scope)
+            ->setMaxResults($effectiveLimit)
             ->setFirstResult($offset)
             ->getQuery()
             ->getResult();
@@ -150,13 +183,36 @@ final class RepositoryQueryBuilder
      *
      * @return int The count of matching repositories.
      */
-    public function countRepositories(?string $search = null): int
+    public function countRepositories(
+        ?string $search = null,
+        ?ResolvedStarRangeScope $scope = null,
+        ?int $maxRepositories = null,
+    ): int
     {
-        $qb = $this->createBaseQueryBuilder($search);
+        $qb = $this->createBaseQueryBuilder($search, $scope);
 
-        return (int) $qb
+        $count = (int) $qb
             ->select('COUNT(repository.id)')
             ->getQuery()
             ->getSingleScalarResult();
+
+        if ($maxRepositories === null) {
+            return $count;
+        }
+
+        return min($count, $maxRepositories);
+    }
+
+    private function resolveEffectiveLimit(int $limit, int $offset, ?int $maxRepositories): int
+    {
+        if ($maxRepositories === null) {
+            return $limit;
+        }
+
+        if ($offset >= $maxRepositories) {
+            return 0;
+        }
+
+        return min($limit, $maxRepositories - $offset);
     }
 }
