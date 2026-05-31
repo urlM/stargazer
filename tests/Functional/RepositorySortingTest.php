@@ -205,6 +205,47 @@ final class RepositorySortingTest extends WebTestCase
         );
     }
 
+    public function testScopedPageOutOfRangeClampsToFirstValidPageWhilePreservingState(): void
+    {
+        for ($index = 1; $index <= 10; ++$index) {
+            $this->entityManager->persist($this->makeRepository(
+                (string) $index,
+                sprintf('repo-%02d', $index),
+                9000 - $index,
+            ));
+        }
+
+        for ($index = 11; $index <= 30; ++$index) {
+            $this->entityManager->persist($this->makeRepository(
+                (string) $index,
+                sprintf('repo-%02d', $index),
+                4000 - $index,
+            ));
+        }
+
+        $this->entityManager->persist($this->makeRepository('100', 'outside/scope', 12000));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?page=3&sort=name&direction=asc&star_range=5000_9999&max_repositories=100');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            array_map(
+                static fn (int $index): string => sprintf('repo-%02d', $index),
+                range(1, 10),
+            ),
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+        self::assertSame('1', $crawler->filter('input[name="page"]')->attr('value'));
+        self::assertCount(0, $crawler->filter('.pagination .page-item.active'));
+        self::assertSame('name', $crawler->filter('input[name="sort"]')->attr('value'));
+        self::assertSame('asc', $crawler->filter('input[name="direction"]')->attr('value'));
+        self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
+        self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(
