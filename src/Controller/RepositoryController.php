@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Exception\GitHub\GitHubApiException;
-use App\Exception\GitHub\GitHubInvalidResponseException;
-use App\Exception\GitHub\GitHubRateLimitException;
-use App\Exception\GitHub\GitHubTimeoutException;
-use App\Exception\GitHub\GitHubUnavailableException;
+use App\Message\SyncRepositoriesMessage;
 use App\Repository\RepositoryRepository;
-use App\Service\GitHubApiService;
 use App\Service\RepositoryQueryBuilder;
-use App\Service\RepositorySyncService;
 use Pagerfanta\Adapter\CallbackAdapter;
 use Pagerfanta\Pagerfanta;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
 
 final class RepositoryController extends AbstractController
@@ -97,8 +92,7 @@ final class RepositoryController extends AbstractController
     #[Route('/refresh', name: 'app_repository_refresh', methods: ['POST'])]
     public function refresh(
         Request $request,
-        GitHubApiService $apiService,
-        RepositorySyncService $syncService,
+        MessageBusInterface $messageBus,
         LoggerInterface $logger,
     ): Response {
         if (!$this->isCsrfTokenValid('refresh', (string) $request->request->get('_token'))) {
@@ -112,23 +106,26 @@ final class RepositoryController extends AbstractController
         }
 
         try {
-            $dtos = $apiService->fetchTopPhpRepositories();
-            $syncService->sync($dtos);
-            $this->addFlash('success', sprintf('Successfully synchronized %d repositories.', count($dtos)));
-        } catch (GitHubApiException $exception) {
-            $logger->warning('Repository refresh failed during GitHub API request.', [
-                'exception_class' => $exception::class,
-                'status_code' => $exception->getStatusCode(),
-                'retryable' => $exception->isRetryable(),
+            $correlationId = bin2hex(random_bytes(16));
+            $messageBus->dispatch(new SyncRepositoriesMessage(
+                'php',
+                100,
+                $correlationId,
+                (new \DateTimeImmutable())->format(DATE_ATOM),
+            ));
+
+            $logger->info('Repository refresh queued.', [
+                'correlation_id' => $correlationId,
+                'triggered_by' => 'manual',
             ]);
 
-            $this->addFlash('error', $this->githubFailureMessage($exception));
+            $this->addFlash('success', 'Repository refresh queued. The sync will run asynchronously.');
         } catch (\Throwable $exception) {
-            $logger->error('Repository refresh failed unexpectedly.', [
+            $logger->error('Repository refresh could not be queued.', [
                 'exception_class' => $exception::class,
             ]);
 
-            $this->addFlash('error', 'Repository refresh failed unexpectedly. Please try again.');
+            $this->addFlash('error', 'Repository refresh could not be queued. Please try again.');
         }
 
         return $this->redirectToRoute('app_repository_index', [
@@ -147,16 +144,5 @@ final class RepositoryController extends AbstractController
     private function normalizeDirection(string $direction): string
     {
         return mb_strtolower($direction) === 'asc' ? 'asc' : 'desc';
-    }
-
-    private function githubFailureMessage(GitHubApiException $exception): string
-    {
-        return match (true) {
-            $exception instanceof GitHubRateLimitException => 'GitHub rate limit was reached. Please wait a few minutes before refreshing again.',
-            $exception instanceof GitHubTimeoutException => 'GitHub did not respond in time. Please try refreshing again.',
-            $exception instanceof GitHubUnavailableException => 'GitHub is temporarily unavailable. Please try refreshing again shortly.',
-            $exception instanceof GitHubInvalidResponseException => 'GitHub returned an unexpected response. Please try refreshing again later.',
-            default => 'GitHub refresh failed. Please try again later.',
-        };
     }
 }

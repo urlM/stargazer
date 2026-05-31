@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Functional;
 
 use App\Entity\Repository;
-use App\Service\GitHubApiService;
+use App\Message\SyncRepositoriesMessage;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Symfony\Contracts\HttpClient\ResponseInterface;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class RepositoryDetailWorkflowTest extends WebTestCase
 {
@@ -70,34 +69,26 @@ final class RepositoryDetailWorkflowTest extends WebTestCase
         self::assertGreaterThan(0, $crawler->selectLink('Back to repository list')->count());
     }
 
-    public function testRefreshFailureShowsSafeFlashMessage(): void
+    public function testRefreshQueuesAsyncSyncAndShowsSuccessFlash(): void
     {
-        $response = $this->createMock(ResponseInterface::class);
-        $response->expects(self::exactly(3))
-            ->method('getStatusCode')
-            ->willReturn(500);
-        $response->expects(self::never())
-            ->method('toArray');
-
-        $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->expects(self::exactly(3))
-            ->method('request')
-            ->willReturn($response);
-
-        $this->client->disableReboot();
-        static::getContainer()->set(GitHubApiService::class, new GitHubApiService($httpClient, ''));
-
         $crawler = $this->client->request('GET', '/');
         $token = $crawler->filter('input[name="_token"]')->attr('value');
 
         $this->client->request('POST', '/refresh', ['_token' => $token]);
+        $transport = static::getContainer()->get('messenger.transport.async');
+        \assert($transport instanceof InMemoryTransport);
+        $sentMessages = $transport->getSent();
         $crawler = $this->client->followRedirect();
 
         self::assertResponseIsSuccessful();
-        self::assertStringContainsString(
-            'GitHub is temporarily unavailable. Please try refreshing again shortly.',
-            $crawler->filter('.alert-danger')->text(),
-        );
-        self::assertStringNotContainsString('status code 500', $crawler->filter('.alert-danger')->text());
+        self::assertStringContainsString('Repository refresh queued. The sync will run asynchronously.', $crawler->filter('.alert-success')->text());
+        self::assertCount(1, $sentMessages);
+
+        $message = $sentMessages[0]->getMessage();
+
+        self::assertInstanceOf(SyncRepositoriesMessage::class, $message);
+        self::assertSame('php', $message->language);
+        self::assertSame(100, $message->limit);
+        self::assertNotSame('', $message->correlationId);
     }
 }

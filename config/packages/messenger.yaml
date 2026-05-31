@@ -4,5 +4,10 @@ framework:
             async:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
         routing:
-            # Route all messages to async by default
-            '*': async
+            App\Message\SyncRepositoriesMessage: async
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                async: 'in-memory://'
