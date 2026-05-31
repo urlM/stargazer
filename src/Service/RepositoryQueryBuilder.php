@@ -140,14 +140,30 @@ final class RepositoryQueryBuilder
         ?int $maxRepositories = null,
         ?array $repositoryIds = null,
     ): int {
-        return (int) $this->createBaseQueryBuilder(
-            $search,
-            $scope,
-            $repositoryIds ?? $this->resolveScopedTopRepositoryIds($scope, $maxRepositories),
-        )
-            ->select('COUNT(repository.id)')
-            ->getQuery()
-            ->getSingleScalarResult();
+        $repositoryIds ??= $this->resolveScopedTopRepositoryIds($scope, $maxRepositories);
+        $normalizedSearch = $this->normalizedSearch($search);
+
+        if ($repositoryIds !== null && $normalizedSearch === null) {
+            return count($repositoryIds);
+        }
+
+        if ($scope !== null && $maxRepositories !== null) {
+            $cacheKey = sprintf(
+                'repository_query_builder.scoped_count.%s.%d.%s.%s',
+                $scope->key,
+                $maxRepositories,
+                $this->resolveScopedDatasetVersion($scope),
+                md5($normalizedSearch ?? '__all__'),
+            );
+
+            return $this->cache->get($cacheKey, function (ItemInterface $item) use ($search, $scope, $repositoryIds): int {
+                $item->expiresAfter(60);
+
+                return $this->executeCountQuery($search, $scope, $repositoryIds);
+            });
+        }
+
+        return $this->executeCountQuery($search, $scope, $repositoryIds);
     }
 
     /**
@@ -172,11 +188,7 @@ final class RepositoryQueryBuilder
         $this->applyScope($qb, $scope);
         $this->applyRepositoryIds($qb, $repositoryIds);
 
-        if ($search === null) {
-            return $qb;
-        }
-
-        $normalizedSearch = $this->searchQueryNormalizer->normalize($search);
+        $normalizedSearch = $this->normalizedSearch($search);
         if ($normalizedSearch === null) {
             return $qb;
         }
@@ -283,6 +295,30 @@ final class RepositoryQueryBuilder
         });
 
         return $repositoryIds;
+    }
+
+    private function executeCountQuery(
+        ?string $search,
+        ?ResolvedStarRangeScope $scope,
+        ?array $repositoryIds,
+    ): int {
+        return (int) $this->createBaseQueryBuilder(
+            $search,
+            $scope,
+            $repositoryIds,
+        )
+            ->select('COUNT(repository.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    private function normalizedSearch(?string $search): ?string
+    {
+        if ($search === null) {
+            return null;
+        }
+
+        return $this->searchQueryNormalizer->normalize($search);
     }
 
     private function resolveScopedDatasetVersion(ResolvedStarRangeScope $scope): string

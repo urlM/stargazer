@@ -129,6 +129,20 @@ final class RepositoryQueryBuilderTest extends KernelTestCase
         ));
     }
 
+    public function testCountRepositoriesUsesPrecomputedScopedIdsWithoutSearch(): void
+    {
+        $this->seedRepositories();
+
+        $scope = $this->syncOptions->resolvedStarRangeScope('5000_9999');
+        $repositoryIds = $this->queryBuilder->resolveScopedRepositoryIds($scope, 2);
+
+        self::assertSame(2, $this->queryBuilder->countRepositories(
+            scope: $scope,
+            maxRepositories: 2,
+            repositoryIds: $repositoryIds,
+        ));
+    }
+
     private function seedRepositories(): void
     {
         $this->entityManager->persist($this->makeRepository('1', 'alpha/project', 12000));
