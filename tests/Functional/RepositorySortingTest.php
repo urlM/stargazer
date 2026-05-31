@@ -246,6 +246,34 @@ final class RepositorySortingTest extends WebTestCase
         self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
     }
 
+    public function testInvalidMaxRepositoriesFallsBackToDefaultWhilePreservingScopeAndSortState(): void
+    {
+        $this->entityManager->persist($this->makeRepository('1', 'omega/out-of-scope', 12000));
+        $this->entityManager->persist($this->makeRepository('2', 'alpha/inside-scope', 7500));
+        $this->entityManager->persist($this->makeRepository('3', 'beta/inside-scope', 5200));
+        $this->entityManager->persist($this->makeRepository('4', 'gamma/inside-scope', 5100));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?sort=name&direction=asc&star_range=5000_9999&max_repositories=999');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['alpha/inside-scope', 'beta/inside-scope', 'gamma/inside-scope'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+        self::assertSame('1', $crawler->filter('input[name="page"]')->attr('value'));
+        self::assertSame('name', $crawler->filter('input[name="sort"]')->attr('value'));
+        self::assertSame('asc', $crawler->filter('input[name="direction"]')->attr('value'));
+        self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
+        self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+        self::assertStringContainsString(
+            "Showing stored results for 5,000\u{2013}9,999 stars within the top 100 repositories captured during the latest refresh.",
+            $crawler->filter('[data-infinite-content]')->text()
+        );
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(
