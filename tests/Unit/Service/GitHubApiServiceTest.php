@@ -75,12 +75,12 @@ final class GitHubApiServiceTest extends TestCase
     public function testFetchTopPhpRepositoriesClassifiesRateLimitStatus(): void
     {
         $response = $this->createMock(ResponseInterface::class);
-        $response->expects(self::once())
+        $response->expects(self::exactly(3))
             ->method('getStatusCode')
             ->willReturn(429);
 
         $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->expects(self::once())
+        $httpClient->expects(self::exactly(3))
             ->method('request')
             ->willReturn($response);
 
@@ -98,12 +98,12 @@ final class GitHubApiServiceTest extends TestCase
     public function testFetchTopPhpRepositoriesClassifiesUnavailableStatus(): void
     {
         $response = $this->createMock(ResponseInterface::class);
-        $response->expects(self::once())
+        $response->expects(self::exactly(3))
             ->method('getStatusCode')
             ->willReturn(503);
 
         $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->expects(self::once())
+        $httpClient->expects(self::exactly(3))
             ->method('request')
             ->willReturn($response);
 
@@ -210,7 +210,7 @@ final class GitHubApiServiceTest extends TestCase
     public function testFetchTopPhpRepositoriesClassifiesTimeoutTransportFailure(): void
     {
         $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->expects(self::once())
+        $httpClient->expects(self::exactly(3))
             ->method('request')
             ->willThrowException(new class('Operation timed out') extends \RuntimeException implements TransportExceptionInterface {
             });
@@ -223,5 +223,42 @@ final class GitHubApiServiceTest extends TestCase
         } catch (GitHubTimeoutException $exception) {
             self::assertTrue($exception->isRetryable());
         }
+    }
+
+    public function testFetchTopPhpRepositoriesRetriesRetryableStatusThenSucceeds(): void
+    {
+        $unavailableResponse = $this->createMock(ResponseInterface::class);
+        $unavailableResponse->expects(self::once())
+            ->method('getStatusCode')
+            ->willReturn(503);
+
+        $successResponse = $this->createMock(ResponseInterface::class);
+        $successResponse->expects(self::once())
+            ->method('getStatusCode')
+            ->willReturn(200);
+        $successResponse->expects(self::once())
+            ->method('toArray')
+            ->willReturn([
+                'items' => [[
+                    'id' => 458058,
+                    'full_name' => 'symfony/symfony',
+                    'html_url' => 'https://github.com/symfony/symfony',
+                    'description' => 'The Symfony PHP framework.',
+                    'stargazers_count' => 30418,
+                    'created_at' => '2011-01-12T15:38:48+00:00',
+                    'pushed_at' => '2026-05-24T11:15:00+00:00',
+                ]],
+            ]);
+
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects(self::exactly(2))
+            ->method('request')
+            ->willReturnOnConsecutiveCalls($unavailableResponse, $successResponse);
+
+        $service = new GitHubApiService($httpClient, '');
+        $dtos = $service->fetchTopPhpRepositories();
+
+        self::assertCount(1, $dtos);
+        self::assertSame('symfony/symfony', $dtos[0]->name);
     }
 }

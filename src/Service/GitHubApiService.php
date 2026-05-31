@@ -23,6 +23,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final class GitHubApiService
 {
     private const SEARCH_URL = 'https://api.github.com/search/repositories';
+    private const MAX_ATTEMPTS = 3;
+    private const RETRY_BACKOFF_MICROSECONDS = [250000, 750000];
 
     private readonly LoggerInterface $logger;
 
@@ -68,6 +70,46 @@ final class GitHubApiService
             'limit' => $limit,
         ]);
 
+        $attempt = 0;
+
+        while (true) {
+            try {
+                $dtos = $this->fetchTopPhpRepositoriesAttempt($options, $limit, $startedAt);
+
+                $this->logger->info('Fetched top PHP repositories from GitHub.', [
+                    'limit' => $limit,
+                    'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                    'retry_count' => $attempt,
+                ]);
+
+                return $dtos;
+            } catch (GitHubApiException $exception) {
+                if (!$this->shouldRetry($exception, $attempt)) {
+                    throw $exception;
+                }
+
+                ++$attempt;
+
+                $this->logger->warning('Retrying GitHub API request after retryable failure.', [
+                    'limit' => $limit,
+                    'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                    'retry_count' => $attempt,
+                    'exception_class' => $exception::class,
+                    'status_code' => $exception->getStatusCode(),
+                ]);
+
+                $this->backOff($attempt);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     *
+     * @return array<GitHubRepositoryDTO>
+     */
+    private function fetchTopPhpRepositoriesAttempt(array $options, int $limit, float $startedAt): array
+    {
         try {
             $response = $this->httpClient->request('GET', self::SEARCH_URL, $options);
 
@@ -132,12 +174,21 @@ final class GitHubApiService
             );
         }
 
-        $this->logger->info('Fetched top PHP repositories from GitHub.', [
-            'limit' => $limit,
-            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-        ]);
-
         return $dtos;
+    }
+
+    private function shouldRetry(GitHubApiException $exception, int $attempt): bool
+    {
+        return $exception->isRetryable() && $attempt < self::MAX_ATTEMPTS - 1;
+    }
+
+    private function backOff(int $attempt): void
+    {
+        $delay = self::RETRY_BACKOFF_MICROSECONDS[$attempt - 1] ?? self::RETRY_BACKOFF_MICROSECONDS[array_key_last(self::RETRY_BACKOFF_MICROSECONDS)];
+
+        if ($delay > 0) {
+            usleep($delay);
+        }
     }
 
     /**
