@@ -40,9 +40,13 @@ final class RepositoryController extends AbstractController
             );
         }
 
+        $totalResults = $queryBuilder->countRepositories($search);
+        $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
+        $page = min(max(1, $page), $lastPage);
+
         $adapter = new CallbackAdapter(
-            static function () use ($queryBuilder, $search): int {
-                return $queryBuilder->countRepositories($search);
+            static function () use ($totalResults): int {
+                return $totalResults;
             },
             static function (int $offset, int $length) use ($queryBuilder, $search, $sort, $direction): iterable {
                 return $queryBuilder->findRepositoryListItems($search, $sort, $direction, $length, $offset);

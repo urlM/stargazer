@@ -36,12 +36,12 @@
     <div class="mb-4">
         <form method="GET" action="{{ path('app_repository_index') }}" class="d-flex gap-2">
             <input type="text" name="search" class="form-control" placeholder="Search repositories..." value="{{ search }}">
-            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="page" value="1">
             <input type="hidden" name="sort" value="{{ sort }}">
             <input type="hidden" name="direction" value="{{ direction }}">
             <button type="submit" class="btn btn-outline-secondary">Search</button>
             {% if search %}
-                <a href="{{ path('app_repository_index', {page: page, sort: sort, direction: direction}) }}" class="btn btn-outline-secondary">Clear</a>
+                <a href="{{ path('app_repository_index', {page: 1, sort: sort, direction: direction}) }}" class="btn btn-outline-secondary">Clear</a>
             {% endif %}
         </form>
     </div>

@@ -74,6 +74,26 @@ final class RepositorySortingTest extends WebTestCase
         self::assertGreaterThanOrEqual(4, $crawler->filter('.pagination .page-link')->count());
     }
 
+    public function testSearchWithStalePageParamClampsBackToFirstPage(): void
+    {
+        $this->entityManager->persist($this->makeRepository('1', 'alpha/project', 300));
+        $this->entityManager->persist($this->makeRepository('2', 'beta/toolkit', 200));
+        $this->entityManager->persist($this->makeRepository('3', 'gamma/library', 100));
+        $this->entityManager->flush();
+
+        $crawler = $this->client->request('GET', '/?page=2&search=alpha&sort=name&direction=asc');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['alpha/project'],
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
+        );
+        self::assertSame('1', $crawler->filter('input[name="page"]')->attr('value'));
+        self::assertCount(0, $crawler->filter('.pagination .page-item.active'));
+    }
+
     private function makeRepository(string $id, string $name, int $stars): Repository
     {
         return new Repository(
