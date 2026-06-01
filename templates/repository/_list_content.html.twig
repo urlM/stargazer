@@ -1,0 +1,90 @@
+{% set list_state = { search: search, page: page, sort: sort, direction: direction, star_range: selected_star_range|default('all'), max_repositories: selected_max_repositories|default(100) } %}
+{% set name_direction = sort == 'name' and direction == 'asc' ? 'desc' : 'asc' %}
+{% set stars_direction = sort == 'stars' and direction == 'desc' ? 'asc' : 'desc' %}
+{% set scope_label = star_range_choices[selected_star_range|default('all')] ?? 'All stars' %}
+<div>
+    <p class="small text-muted mb-3">
+        Showing stored results for {{ scope_label }} within the top {{ selected_max_repositories|default(100)|number_format }} repositories captured during the latest refresh.
+    </p>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th scope="col" aria-sort="{{ sort == 'name' ? (direction == 'asc' ? 'ascending' : 'descending') : 'none' }}">
+                        <a
+                            href="{{ path('app_repository_index', list_state|merge({sort: 'name', direction: name_direction})) }}"
+                            class="link-body-emphasis text-decoration-none"
+                        >
+                            Repository Name
+                            {% if sort == 'name' %}
+                                <span aria-hidden="true">{% if direction == 'asc' %}&uarr;{% else %}&darr;{% endif %}</span>
+                                <span class="visually-hidden">sorted {{ direction == 'asc' ? 'ascending' : 'descending' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th scope="col" aria-sort="{{ sort == 'stars' ? (direction == 'asc' ? 'ascending' : 'descending') : 'none' }}">
+                        <a
+                            href="{{ path('app_repository_index', list_state|merge({sort: 'stars', direction: stars_direction})) }}"
+                            class="link-body-emphasis text-decoration-none"
+                        >
+                            Stars
+                            {% if sort == 'stars' %}
+                                <span aria-hidden="true">{% if direction == 'asc' %}&uarr;{% else %}&darr;{% endif %}</span>
+                                <span class="visually-hidden">sorted {{ direction == 'asc' ? 'ascending' : 'descending' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+            <tbody data-repository-rows>
+                {% include 'repository/_rows.html.twig' %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagerfanta.nbPages > 1 %}
+        <nav class="mt-4" aria-label="Pagination">
+            <ul class="pagination justify-content-center">
+                {% if pagerfanta.hasPreviousPage %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ path('app_repository_index', list_state|merge({page: pagerfanta.previousPage})) }}">Previous</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Previous</span>
+                    </li>
+                {% endif %}
+
+                {% for page in pagination_pages|default([]) %}
+                    {% if page is null %}
+                        <li class="page-item disabled" aria-hidden="true">
+                            <span class="page-link">&hellip;</span>
+                        </li>
+                    {% elseif page == pagerfanta.currentPage %}
+                        <li class="page-item active" aria-current="page">
+                            <span class="page-link">{{ page }}</span>
+                        </li>
+                    {% else %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_repository_index', list_state|merge({page: page})) }}">{{ page }}</a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagerfanta.hasNextPage %}
+                    <li class="page-item">
+                        <a
+                            class="page-link"
+                            href="{{ path('app_repository_index', list_state|merge({page: pagerfanta.nextPage})) }}"
+                            data-next-page-link
+                        >Next</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Next</span>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>

@@ -3,19 +3,80 @@ services:
   web:
     build:
       dockerfile: ./Dockerfile
+    command:
+      - apache2-foreground
+    cpus: 2.0
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    mem_limit: 2g
     ports:
       - "8080:80"
     volumes:
       - ./docker/apache.conf:/etc/apache2/sites-available/000-default.conf
       - .:/var/www/
+      - symfony_cache:/var/www/var/cache
+      - symfony_log:/var/www/var/log
+      - symfony_sessions:/var/www/var/sessions
     working_dir: /var/www
+  worker:
+    build:
+      dockerfile: ./Dockerfile
+    command:
+      - php
+      - bin/console
+      - messenger:consume
+      - async
+      - --time-limit=3600
+      - --memory-limit=128M
+      - --no-interaction
+    cpus: 1.5
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    init: true
+    mem_limit: 1g
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/
+      - symfony_cache:/var/www/var/cache
+      - symfony_log:/var/www/var/log
+      - symfony_sessions:/var/www/var/sessions
+    working_dir: /var/www
+  redis:
+    cpus: 0.5
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    mem_limit: 256m
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
 ###> doctrine/doctrine-bundle ###
   database:
+    cpus: 2.0
     image: docker.io/mariadb:11.5
     environment:
       MYSQL_ROOT_PASSWORD: ''
       MYSQL_ALLOW_EMPTY_PASSWORD: yes
       MYSQL_DATABASE: app
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 2g
     ports:
       - "8306:3306"
     volumes:
@@ -26,3 +87,7 @@ volumes:
 ###> doctrine/doctrine-bundle ###
   database_data:
 ###< doctrine/doctrine-bundle ###
+  redis_data:
+  symfony_cache:
+  symfony_log:
+  symfony_sessions:

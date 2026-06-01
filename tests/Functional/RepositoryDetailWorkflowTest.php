@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Functional;
 
 use App\Entity\Repository;
-use App\Service\GitHubApiService;
+use App\Message\SyncRepositoriesMessage;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Symfony\Contracts\HttpClient\ResponseInterface;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class RepositoryDetailWorkflowTest extends WebTestCase
 {
@@ -70,34 +69,97 @@ final class RepositoryDetailWorkflowTest extends WebTestCase
         self::assertGreaterThan(0, $crawler->selectLink('Back to repository list')->count());
     }
 
-    public function testRefreshFailureShowsSafeFlashMessage(): void
+    public function testRefreshQueuesAsyncSyncAndShowsSuccessFlash(): void
     {
-        $response = $this->createMock(ResponseInterface::class);
-        $response->expects(self::exactly(3))
-            ->method('getStatusCode')
-            ->willReturn(500);
-        $response->expects(self::never())
-            ->method('toArray');
+        $crawler = $this->client->request('GET', '/');
+        $token = $crawler->filter('input[name="_token"]')->attr('value');
 
-        $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->expects(self::exactly(3))
-            ->method('request')
-            ->willReturn($response);
+        $this->client->request('POST', '/refresh', [
+            '_token' => $token,
+            'star_range' => '1000_4999',
+            'max_repositories' => 500,
+        ]);
+        $transport = static::getContainer()->get('messenger.transport.async');
+        \assert($transport instanceof InMemoryTransport);
+        $sentMessages = $transport->getSent();
+        $crawler = $this->client->followRedirect();
 
-        $this->client->disableReboot();
-        static::getContainer()->set(GitHubApiService::class, new GitHubApiService($httpClient, ''));
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('Repository refresh queued for 1,000–4,999 stars, up to 500 repositories.', $crawler->filter('.alert-success')->text());
+        self::assertCount(1, $sentMessages);
+
+        $message = $sentMessages[0]->getMessage();
+
+        self::assertInstanceOf(SyncRepositoriesMessage::class, $message);
+        self::assertSame('php', $message->language);
+        self::assertSame(500, $message->maxRepositories);
+        self::assertNotSame('', $message->correlationId);
+        self::assertSame('manual', $message->triggeredBy);
+        self::assertSame('1000_4999', $message->starRangeKey);
+        self::assertNull($message->remainingRepositories);
+        self::assertSame(0, $message->syncedCount);
+        self::assertSame([], $message->pendingShards);
+    }
+
+    public function testRefreshRedirectImmediatelyUsesSelectedScopeAgainstStoredRepositories(): void
+    {
+        for ($index = 1; $index <= 100; ++$index) {
+            $this->entityManager->persist($this->makeRepository(
+                (string) $index,
+                sprintf('repo-%03d', $index),
+                9999 - $index,
+            ));
+        }
+
+        $this->entityManager->persist($this->makeRepository('101', 'aaa/excluded-scoped', 5000));
+        $this->entityManager->persist($this->makeRepository('102', 'aab/out-of-scope', 12000));
+        $this->entityManager->flush();
 
         $crawler = $this->client->request('GET', '/');
         $token = $crawler->filter('input[name="_token"]')->attr('value');
 
-        $this->client->request('POST', '/refresh', ['_token' => $token]);
+        $this->client->request('POST', '/refresh', [
+            '_token' => $token,
+            'sort' => 'name',
+            'direction' => 'asc',
+            'star_range' => '5000_9999',
+            'max_repositories' => 100,
+        ]);
+
+        $transport = static::getContainer()->get('messenger.transport.async');
+        \assert($transport instanceof InMemoryTransport);
+        $sentMessages = $transport->getSent();
         $crawler = $this->client->followRedirect();
 
         self::assertResponseIsSuccessful();
-        self::assertStringContainsString(
-            'GitHub is temporarily unavailable. Please try refreshing again shortly.',
-            $crawler->filter('.alert-danger')->text(),
+        self::assertCount(1, $sentMessages);
+        self::assertSame('5000_9999', $crawler->filter('input[name="star_range"]')->attr('value'));
+        self::assertSame('100', $crawler->filter('input[name="max_repositories"]')->attr('value'));
+        self::assertStringContainsString('Repository refresh queued for', $crawler->filter('.alert-success')->text());
+        self::assertSame(
+            array_map(
+                static fn (int $index): string => sprintf('repo-%03d', $index),
+                range(1, 20),
+            ),
+            $crawler->filter('tbody tr td:first-child a')->each(
+                static fn ($node): string => trim($node->text())
+            ),
         );
-        self::assertStringNotContainsString('status code 500', $crawler->filter('.alert-danger')->text());
+        self::assertStringNotContainsString('aaa/excluded-scoped', $crawler->filter('tbody')->text());
+        self::assertStringNotContainsString('aab/out-of-scope', $crawler->filter('tbody')->text());
+    }
+
+    private function makeRepository(string $id, string $name, int $stars): Repository
+    {
+        return new Repository(
+            $id,
+            $name,
+            sprintf('https://github.com/%s', $name),
+            sprintf('%s description', $name),
+            $stars,
+            new \DateTimeImmutable('2020-01-01T00:00:00+00:00'),
+            new \DateTimeImmutable('2026-05-24T12:00:00+00:00'),
+            new \DateTimeImmutable('2026-05-24T13:00:00+00:00'),
+        );
     }
 }

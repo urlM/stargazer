@@ -11,7 +11,23 @@
         </div>
         <form action="{{ path('app_repository_refresh') }}" method="POST">
             <input type="hidden" name="_token" value="{{ csrf_token('refresh') }}">
-            <button type="submit" class="btn btn-primary">Refresh Data</button>
+            <input type="hidden" name="search" value="{{ search }}">
+            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <input type="hidden" name="direction" value="{{ direction }}">
+            <div class="d-flex flex-column flex-sm-row gap-2">
+                <select name="star_range" class="form-select">
+                    {% for value, label in star_range_choices %}
+                        <option value="{{ value }}" {% if value == selected_star_range %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <select name="max_repositories" class="form-select">
+                    {% for value in max_repository_choices %}
+                        <option value="{{ value }}" {% if value == selected_max_repositories %}selected{% endif %}>Up to {{ value|number_format }} repos</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary">Refresh Data</button>
+            </div>
         </form>
     </div>
 
@@ -29,29 +45,23 @@
         </section>
     {% endif %}
 
-    <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-        <thead>
-            <tr>
-                <th>Repository Name</th>
-                <th>Stars</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for repo in repositories %}
-                <tr>
-                    <td>
-                        <a href="{{ path('app_repository_show', {id: repo.id}) }}">{{ repo.name }}</a>
-                    </td>
-                    <td>{{ repo.stars|number_format }}</td>
-                </tr>
-            {% else %}
-                <tr>
-                    <td colspan="2">No repositories found in the database. Please run a sync.</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="mb-4">
+        <form method="GET" action="{{ path('app_repository_index') }}" class="d-flex gap-2">
+            <input type="text" name="search" class="form-control" placeholder="Search repositories..." value="{{ search }}">
+            <input type="hidden" name="page" value="1">
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <input type="hidden" name="direction" value="{{ direction }}">
+            <input type="hidden" name="star_range" value="{{ selected_star_range }}">
+            <input type="hidden" name="max_repositories" value="{{ selected_max_repositories }}">
+            <button type="submit" class="btn btn-outline-secondary">Search</button>
+            {% if search %}
+                <a href="{{ path('app_repository_index', {page: 1, sort: sort, direction: direction, star_range: selected_star_range, max_repositories: selected_max_repositories}) }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </form>
     </div>
+
+    <section id="repository-listing">
+        {% include 'repository/_list_content.html.twig' %}
+    </section>
 </main>
 {% endblock %}

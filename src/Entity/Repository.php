@@ -11,7 +11,10 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: RepositoryRepository::class)]
 #[ORM\Table(name: 'repositories')]
-#[ORM\Index(name: 'idx_repositories_stars', columns: ['stars'])]
+#[ORM\Index(name: 'idx_repositories_stars_id', columns: ['stars', 'id'])]
+#[ORM\Index(name: 'idx_repositories_name_id', columns: ['name', 'id'])]
+#[ORM\Index(name: 'idx_repositories_created_at_id', columns: ['created_at', 'id'])]
+#[ORM\Index(name: 'idx_repositories_pushed_at_id', columns: ['pushed_at', 'id'])]
 class Repository
 {
     #[ORM\Id]

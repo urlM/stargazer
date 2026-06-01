@@ -1,0 +1,18 @@
+{% for repo in repositories %}
+    <tr data-repository-id="{{ repo.id }}">
+        <td>
+            <a href="{{ path('app_repository_show', {id: repo.id}) }}">{{ repo.name }}</a>
+        </td>
+        <td>{{ repo.stars|number_format }}</td>
+    </tr>
+{% else %}
+    <tr>
+        <td colspan="2">
+            {% if search %}
+                No stored repositories in this scope match “{{ search }}”. Try a different search.
+            {% else %}
+                No stored repositories are available for this scope yet. Queue a refresh to load matching repositories.
+            {% endif %}
+        </td>
+    </tr>
+{% endfor %}

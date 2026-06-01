@@ -26,15 +26,32 @@ final class RepositorySyncService
      *
      * @param array<GitHubRepositoryDTO> $dtos
      */
-    public function sync(array $dtos): void
+    public function sync(array $dtos): int
     {
+        if ($dtos === []) {
+            return 0;
+        }
+
         $now = new DateTimeImmutable();
+        $deduplicatedDtos = [];
 
         foreach ($dtos as $dto) {
-            $repository = $this->repositoryRepository->find($dto->id);
+            $deduplicatedDtos[$dto->id] = $dto;
+        }
+
+        $existingRepositories = $this->repositoryRepository->findBy([
+            'id' => array_keys($deduplicatedDtos),
+        ]);
+        $existingById = [];
+
+        foreach ($existingRepositories as $repository) {
+            $existingById[$repository->getId()] = $repository;
+        }
+
+        foreach ($deduplicatedDtos as $dto) {
+            $repository = $existingById[$dto->id] ?? null;
 
             if ($repository instanceof Repository) {
-                // Update existing record
                 $repository->refresh(
                     $dto->name,
                     $dto->url,
@@ -45,7 +62,6 @@ final class RepositorySyncService
                     $now
                 );
             } else {
-                // Create new record
                 $repository = new Repository(
                     $dto->id,
                     $dto->name,
@@ -61,5 +77,7 @@ final class RepositorySyncService
         }
 
         $this->entityManager->flush();
+
+        return count($deduplicatedDtos);
     }
 }
