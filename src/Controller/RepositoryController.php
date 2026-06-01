@@ -24,12 +24,19 @@ final class RepositoryController extends AbstractController
     private const DEFAULT_DIRECTION = 'desc';
     private const ALLOWED_SORTS = ['stars', 'name', 'created_at', 'pushed_at'];
 
+    public function __construct(
+        private readonly bool $stargazerTimingEnabled,
+    ) {
+    }
+
     #[Route('/', name: 'app_repository_index', methods: ['GET'])]
     public function index(
         Request $request,
         RepositoryQueryBuilder $queryBuilder,
         RepositorySyncOptions $syncOptions,
+        LoggerInterface $logger,
     ): Response {
+        $controllerStartedAt = microtime(true);
         $starRangeKey = $syncOptions->normalizeStarRangeKey($request->query->getString('star_range', RepositorySyncOptions::DEFAULT_STAR_RANGE));
         $maxRepositories = $syncOptions->normalizeMaxRepositories($request->query->getInt('max_repositories', RepositorySyncOptions::DEFAULT_MAX_REPOSITORIES));
         $viewData = $this->buildListingViewData(
@@ -39,8 +46,51 @@ final class RepositoryController extends AbstractController
             $starRangeKey,
             $maxRepositories,
         );
+        $phaseTimings = null;
+        $scopedIdDebugTimings = null;
+        if (isset($viewData['timings']) && is_array($viewData['timings'])) {
+            $phaseTimings = $viewData['timings'];
+            unset($viewData['timings']);
+        }
+        if (isset($viewData['scoped_id_debug_timings']) && is_array($viewData['scoped_id_debug_timings'])) {
+            $scopedIdDebugTimings = $viewData['scoped_id_debug_timings'];
+            unset($viewData['scoped_id_debug_timings']);
+        }
+        $response = $this->render('repository/index.html.twig', $viewData);
 
-        return $this->render('repository/index.html.twig', $viewData);
+        if ($this->stargazerTimingEnabled) {
+            $logger->info('Repository index render timing.', [
+                'route' => 'app_repository_index',
+                'duration_ms' => (int) round((microtime(true) - $controllerStartedAt) * 1000),
+                'page' => $viewData['page'],
+                'search' => $viewData['search'],
+                'sort' => $viewData['sort'],
+                'direction' => $viewData['direction'],
+                'star_range_key' => $viewData['selected_star_range'],
+                'max_repositories' => $viewData['selected_max_repositories'],
+                'phase_timings' => $phaseTimings,
+            ]);
+
+            $response->headers->set('X-Stargazer-Controller-Ms', (string) ((int) round((microtime(true) - $controllerStartedAt) * 1000)));
+            if (is_array($phaseTimings)) {
+                $response->headers->set('X-Stargazer-Resolve-Scope-Ids-Ms', (string) ((int) ($phaseTimings['resolve_scope_ids_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Count-Ms', (string) ((int) ($phaseTimings['count_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Rows-Ms', (string) ((int) ($phaseTimings['rows_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Total-Ms', (string) ((int) ($phaseTimings['total_ms'] ?? 0)));
+            }
+            if (is_array($scopedIdDebugTimings)) {
+                $response->headers->set('X-Stargazer-Scoped-Ids-Cache-Hit', (string) ((int) (($scopedIdDebugTimings['cache_hit'] ?? false) ? 1 : 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Dataset-Version-Ms', (string) ((int) ($scopedIdDebugTimings['dataset_version_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Cache-Lookup-Ms', (string) ((int) ($scopedIdDebugTimings['cache_lookup_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Build-Query-Ms', (string) ((int) ($scopedIdDebugTimings['build_query_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Query-Execute-Ms', (string) ((int) ($scopedIdDebugTimings['query_execute_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Hydration-Ms', (string) ((int) ($scopedIdDebugTimings['hydration_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Total-Ms', (string) ((int) ($scopedIdDebugTimings['total_ms'] ?? 0)));
+                $response->headers->set('X-Stargazer-Scoped-Ids-Resolved-Count', (string) ((int) ($scopedIdDebugTimings['resolved_count'] ?? 0)));
+            }
+        }
+
+        return $response;
     }
 
     #[Route('/repository/{id}', name: 'app_repository_show', methods: ['GET'], requirements: ['id' => '\d+'])]
@@ -155,16 +205,34 @@ final class RepositoryController extends AbstractController
         string $starRangeKey,
         int $maxRepositories,
     ): array {
+        $timings = [
+            'resolve_scope_ids_ms' => 0,
+            'count_ms' => 0,
+            'rows_ms' => 0,
+            'total_ms' => 0,
+        ];
+        $methodStartedAt = microtime(true);
         $search = $request->query->getString('search', '');
         $sort = $this->normalizeSort($request->query->getString('sort', self::DEFAULT_SORT));
         $direction = $this->normalizeDirection($request->query->getString('direction', self::DEFAULT_DIRECTION));
         $scope = $syncOptions->resolvedStarRangeScope($starRangeKey);
-        $scopedRepositoryIds = $queryBuilder->resolveScopedRepositoryIds($scope, $maxRepositories);
+
+        $phaseStartedAt = microtime(true);
+        $scopedIdDebugTimings = null;
+        $scopedRepositoryIds = $queryBuilder->resolveScopedRepositoryIds($scope, $maxRepositories, $scopedIdDebugTimings);
+        $timings['resolve_scope_ids_ms'] = (int) round((microtime(true) - $phaseStartedAt) * 1000);
+
         $page = max(1, $request->query->getInt('page', 1));
+
+        $phaseStartedAt = microtime(true);
         $totalResults = $queryBuilder->countRepositories($search, $scope, $maxRepositories, $scopedRepositoryIds);
+        $timings['count_ms'] = (int) round((microtime(true) - $phaseStartedAt) * 1000);
+
         $lastPage = max(1, (int) ceil($totalResults / self::PER_PAGE));
         $page = min($page, $lastPage);
         $offset = ($page - 1) * self::PER_PAGE;
+
+        $phaseStartedAt = microtime(true);
         $repositories = $queryBuilder->findRepositoryListItems(
             $search,
             $sort,
@@ -175,11 +243,13 @@ final class RepositoryController extends AbstractController
             $maxRepositories,
             $scopedRepositoryIds,
         );
+        $timings['rows_ms'] = (int) round((microtime(true) - $phaseStartedAt) * 1000);
         $pagerfanta = new Pagerfanta(new FixedAdapter($totalResults, $repositories));
         $pagerfanta->setMaxPerPage(self::PER_PAGE);
         $pagerfanta->setCurrentPage($page);
+        $timings['total_ms'] = (int) round((microtime(true) - $methodStartedAt) * 1000);
 
-        return [
+        $viewData = [
             'repositories' => $pagerfanta->getCurrentPageResults(),
             'pagerfanta' => $pagerfanta,
             'search' => $search,
@@ -192,6 +262,15 @@ final class RepositoryController extends AbstractController
             'max_repository_choices' => $syncOptions->maxRepositoryChoices(),
             'pagination_pages' => $this->buildPaginationPages($page, $lastPage),
         ];
+
+        if ($this->stargazerTimingEnabled) {
+            $viewData['timings'] = $timings;
+            if (is_array($scopedIdDebugTimings)) {
+                $viewData['scoped_id_debug_timings'] = $scopedIdDebugTimings;
+            }
+        }
+
+        return $viewData;
     }
 
     /**

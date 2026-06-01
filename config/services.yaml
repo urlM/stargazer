@@ -3,11 +3,14 @@
 
 parameters:
     env(GITHUB_TOKEN): ''
+    env(STARGAZER_TIMING): '0'
 
 services:
     _defaults:
         autowire: true
         autoconfigure: true
+        bind:
+            bool $stargazerTimingEnabled: '%env(bool:STARGAZER_TIMING)%'
 
     App\:
         resource: '../src/'

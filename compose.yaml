@@ -13,6 +13,9 @@ services:
     volumes:
       - ./docker/apache.conf:/etc/apache2/sites-available/000-default.conf
       - .:/var/www/
+      - symfony_cache:/var/www/var/cache
+      - symfony_log:/var/www/var/log
+      - symfony_sessions:/var/www/var/sessions
     working_dir: /var/www
   worker:
     build:
@@ -34,6 +37,9 @@ services:
     restart: unless-stopped
     volumes:
       - .:/var/www/
+      - symfony_cache:/var/www/var/cache
+      - symfony_log:/var/www/var/log
+      - symfony_sessions:/var/www/var/sessions
     working_dir: /var/www
   redis:
     image: redis:7-alpine
@@ -72,3 +78,6 @@ volumes:
   database_data:
 ###< doctrine/doctrine-bundle ###
   redis_data:
+  symfony_cache:
+  symfony_log:
+  symfony_sessions:

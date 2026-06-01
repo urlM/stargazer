@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Repository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
@@ -21,6 +22,8 @@ final class RepositoryQueryBuilder
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SearchQueryNormalizer $searchQueryNormalizer,
+        private readonly LoggerInterface $logger,
+        private readonly bool $stargazerTimingEnabled,
         #[Autowire(service: 'cache.app')]
         private readonly CacheInterface $cache,
     ) {
@@ -169,9 +172,9 @@ final class RepositoryQueryBuilder
     /**
      * @return list<string>|null
      */
-    public function resolveScopedRepositoryIds(?ResolvedStarRangeScope $scope = null, ?int $maxRepositories = null): ?array
+    public function resolveScopedRepositoryIds(?ResolvedStarRangeScope $scope = null, ?int $maxRepositories = null, ?array &$debugTimings = null): ?array
     {
-        return $this->resolveScopedTopRepositoryIds($scope, $maxRepositories);
+        return $this->resolveScopedTopRepositoryIds($scope, $maxRepositories, $debugTimings);
     }
 
     /**
@@ -257,26 +260,63 @@ final class RepositoryQueryBuilder
     /**
      * @return list<string>|null
      */
-    private function resolveScopedTopRepositoryIds(?ResolvedStarRangeScope $scope, ?int $maxRepositories): ?array
+    private function resolveScopedTopRepositoryIds(?ResolvedStarRangeScope $scope, ?int $maxRepositories, ?array &$debugTimings = null): ?array
     {
         if ($scope === null || $maxRepositories === null) {
+            if ($this->stargazerTimingEnabled) {
+                $debugTimings = [
+                    'skipped' => true,
+                    'reason' => 'missing_scope_or_limit',
+                ];
+            }
+
             return null;
         }
 
         if ($maxRepositories <= 0) {
+            if ($this->stargazerTimingEnabled) {
+                $debugTimings = [
+                    'skipped' => true,
+                    'reason' => 'non_positive_limit',
+                ];
+            }
+
             return [];
         }
 
+        $startedAt = microtime(true);
+        $datasetVersionStartedAt = microtime(true);
+        $datasetVersion = $this->resolveScopedDatasetVersion($scope);
+        $datasetVersionMs = (int) round((microtime(true) - $datasetVersionStartedAt) * 1000);
         $cacheKey = sprintf(
             'repository_query_builder.scoped_ids.%s.%d.%s',
             $scope->key,
             $maxRepositories,
-            $this->resolveScopedDatasetVersion($scope),
+            $datasetVersion,
         );
+        $cacheMiss = false;
+        $timings = [
+            'dataset_version_ms' => $datasetVersionMs,
+            'cache_lookup_ms' => 0,
+            'build_query_ms' => 0,
+            'query_execute_ms' => 0,
+            'hydration_ms' => 0,
+            'total_ms' => 0,
+            'resolved_count' => 0,
+            'cache_hit' => false,
+            'cache_key' => $cacheKey,
+            'scope_key' => $scope->key,
+            'max_repositories' => $maxRepositories,
+            'dataset_version' => $datasetVersion,
+            'sql' => null,
+        ];
+        $cacheLookupStartedAt = microtime(true);
 
         /** @var list<string> $repositoryIds */
-        $repositoryIds = $this->cache->get($cacheKey, function (ItemInterface $item) use ($scope, $maxRepositories): array {
+        $repositoryIds = $this->cache->get($cacheKey, function (ItemInterface $item) use ($scope, $maxRepositories, &$cacheMiss, &$timings): array {
+            $cacheMiss = true;
             $item->expiresAfter(60);
+            $queryBuildStartedAt = microtime(true);
 
             $qb = $this->entityManager->createQueryBuilder()
                 ->select('repository.id')
@@ -284,15 +324,30 @@ final class RepositoryQueryBuilder
 
             $this->applyScope($qb, $scope);
             $this->applySorting($qb, 'stars', 'DESC');
-
-            return array_map(
+            $query = $qb->setMaxResults($maxRepositories)->getQuery();
+            $timings['build_query_ms'] = (int) round((microtime(true) - $queryBuildStartedAt) * 1000);
+            $timings['sql'] = $query->getSQL();
+            $queryExecuteStartedAt = microtime(true);
+            $singleColumnResult = $query->getSingleColumnResult();
+            $timings['query_execute_ms'] = (int) round((microtime(true) - $queryExecuteStartedAt) * 1000);
+            $hydrationStartedAt = microtime(true);
+            $repositoryIds = array_map(
                 static fn (mixed $repositoryId): string => (string) $repositoryId,
-                $qb
-                    ->setMaxResults($maxRepositories)
-                    ->getQuery()
-                    ->getSingleColumnResult(),
+                $singleColumnResult,
             );
+            $timings['hydration_ms'] = (int) round((microtime(true) - $hydrationStartedAt) * 1000);
+
+            return $repositoryIds;
         });
+        $timings['cache_lookup_ms'] = (int) round((microtime(true) - $cacheLookupStartedAt) * 1000);
+        $timings['cache_hit'] = !$cacheMiss;
+        $timings['resolved_count'] = count($repositoryIds);
+        $timings['total_ms'] = (int) round((microtime(true) - $startedAt) * 1000);
+
+        if ($this->stargazerTimingEnabled) {
+            $debugTimings = $timings;
+            $this->logger->info('Scoped repository ID resolution timing.', $timings);
+        }
 
         return $repositoryIds;
     }
