@@ -24,6 +24,7 @@ final class RepositoryQueryBuilder
         private readonly SearchQueryNormalizer $searchQueryNormalizer,
         private readonly LoggerInterface $logger,
         private readonly bool $stargazerTimingEnabled,
+        private readonly RepositoryCacheVersionManager $repositoryCacheVersionManager,
         #[Autowire(service: 'cache.app')]
         private readonly CacheInterface $cache,
     ) {
@@ -155,7 +156,7 @@ final class RepositoryQueryBuilder
                 'repository_query_builder.scoped_count.%s.%d.%s.%s',
                 $scope->key,
                 $maxRepositories,
-                $this->resolveScopedDatasetVersion($scope),
+                $this->repositoryCacheVersionManager->currentVersion(),
                 md5($normalizedSearch ?? '__all__'),
             );
 
@@ -286,7 +287,7 @@ final class RepositoryQueryBuilder
 
         $startedAt = microtime(true);
         $datasetVersionStartedAt = microtime(true);
-        $datasetVersion = $this->resolveScopedDatasetVersion($scope);
+        $datasetVersion = $this->repositoryCacheVersionManager->currentVersion();
         $datasetVersionMs = (int) round((microtime(true) - $datasetVersionStartedAt) * 1000);
         $cacheKey = sprintf(
             'repository_query_builder.scoped_ids.%s.%d.%s',
@@ -375,27 +376,6 @@ final class RepositoryQueryBuilder
 
         return $this->searchQueryNormalizer->normalize($search);
     }
-
-    private function resolveScopedDatasetVersion(ResolvedStarRangeScope $scope): string
-    {
-        $qb = $this->entityManager->createQueryBuilder()
-            ->select('COUNT(repository.id) AS repository_count', 'MAX(repository.syncedAt) AS latest_sync_at')
-            ->from(Repository::class, 'repository');
-
-        $this->applyScope($qb, $scope);
-
-        /** @var array{repository_count: string|int|null, latest_sync_at: mixed} $result */
-        $result = $qb->getQuery()->getSingleResult();
-        $repositoryCount = (int) ($result['repository_count'] ?? 0);
-        $latestSyncAt = $result['latest_sync_at'];
-
-        if (!$latestSyncAt instanceof \DateTimeInterface) {
-            return sprintf('%d-none', $repositoryCount);
-        }
-
-        return sprintf('%d-%s', $repositoryCount, $latestSyncAt->format('U'));
-    }
-
     private function resolveEffectiveLimit(
         int $limit,
         int $offset,

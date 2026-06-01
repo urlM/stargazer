@@ -12,6 +12,7 @@ use App\MessageHandler\SyncRepositoriesHandler;
 use App\Repository\RepositoryRepository;
 use App\Repository\SyncLogRepository;
 use App\Service\GitHubApiService;
+use App\Service\RepositoryCacheVersionManager;
 use App\Service\RepositorySyncOptions;
 use App\Service\RepositorySyncService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -28,6 +29,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
 {
     private EntityManagerInterface $entityManager;
     private RepositoryRepository $repositories;
+    private RepositoryCacheVersionManager $repositoryCacheVersionManager;
     private SyncLogRepository $syncLogs;
 
     protected function setUp(): void
@@ -37,6 +39,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
         $container = static::getContainer();
         $this->entityManager = $container->get(EntityManagerInterface::class);
         $this->repositories = $container->get(RepositoryRepository::class);
+        $this->repositoryCacheVersionManager = $container->get(RepositoryCacheVersionManager::class);
         $this->syncLogs = $container->get(SyncLogRepository::class);
 
         $metadata = $this->entityManager->getMetadataFactory()->getAllMetadata();
@@ -48,11 +51,12 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
     protected function tearDown(): void
     {
         parent::ensureKernelShutdown();
-        unset($this->entityManager, $this->repositories, $this->syncLogs);
+        unset($this->entityManager, $this->repositories, $this->repositoryCacheVersionManager, $this->syncLogs);
     }
 
     public function testHandlerCreatesSuccessfulSyncLogAndPersistsRepositories(): void
     {
+        $previousVersion = $this->repositoryCacheVersionManager->currentVersion();
         $response = $this->createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(200);
         $response->method('toArray')->willReturn([
@@ -94,10 +98,12 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
         self::assertSame(0, $syncLog->getRetryCount());
         self::assertNull($syncLog->getError());
         self::assertNotNull($syncLog->getDurationMs());
+        self::assertNotSame($previousVersion, $this->repositoryCacheVersionManager->currentVersion());
     }
 
     public function testHandlerCreatesFailedSyncLogWhenGitHubFails(): void
     {
+        $previousVersion = $this->repositoryCacheVersionManager->currentVersion();
         $response = $this->createMock(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(500);
         $response->expects(self::never())->method('toArray');
@@ -127,6 +133,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
             self::assertNotNull($syncLog->getError());
             self::assertNotNull($syncLog->getDurationMs());
             self::assertSame(0, $this->repositories->count([]));
+            self::assertSame($previousVersion, $this->repositoryCacheVersionManager->currentVersion());
         }
     }
 
@@ -217,6 +224,7 @@ final class SyncRepositoriesHandlerTest extends KernelTestCase
             new GitHubApiService($httpClient, ''),
             new RepositorySyncService($this->entityManager, $this->repositories),
             new RepositorySyncOptions(),
+            $this->repositoryCacheVersionManager,
             $this->syncLogs,
             $messageBus,
             new NullLogger(),

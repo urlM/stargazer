@@ -7,6 +7,7 @@ namespace App\MessageHandler;
 use App\Entity\SyncLog;
 use App\Message\SyncRepositoriesMessage;
 use App\Repository\SyncLogRepository;
+use App\Service\RepositoryCacheVersionManager;
 use App\Service\GitHubApiService;
 use App\Service\RepositorySyncOptions;
 use App\Service\RepositorySyncService;
@@ -23,6 +24,7 @@ final class SyncRepositoriesHandler
         private readonly GitHubApiService $githubApiService,
         private readonly RepositorySyncService $repositorySyncService,
         private readonly RepositorySyncOptions $syncOptions,
+        private readonly RepositoryCacheVersionManager $repositoryCacheVersionManager,
         private readonly SyncLogRepository $syncLogRepository,
         private readonly MessageBusInterface $messageBus,
         private readonly LoggerInterface $logger,
@@ -228,5 +230,6 @@ final class SyncRepositoriesHandler
             ->setDurationMs((int) round((microtime(true) - $startedAt) * 1000))
             ->setError(null);
         $this->syncLogRepository->save($syncLog, true);
+        $this->repositoryCacheVersionManager->bumpVersion();
     }
 }
