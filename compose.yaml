@@ -5,11 +5,13 @@ services:
       dockerfile: ./Dockerfile
     command:
       - apache2-foreground
+    cpus: 2.0
     depends_on:
       redis:
         condition: service_healthy
       database:
         condition: service_healthy
+    mem_limit: 2g
     ports:
       - "8080:80"
     volumes:
@@ -30,12 +32,14 @@ services:
       - --time-limit=3600
       - --memory-limit=128M
       - --no-interaction
+    cpus: 1.5
     depends_on:
       redis:
         condition: service_healthy
       database:
         condition: service_healthy
     init: true
+    mem_limit: 1g
     restart: unless-stopped
     volumes:
       - .:/var/www/
@@ -44,6 +48,7 @@ services:
       - symfony_sessions:/var/www/var/sessions
     working_dir: /var/www
   redis:
+    cpus: 0.5
     image: redis:7-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -51,6 +56,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    mem_limit: 256m
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -58,6 +64,7 @@ services:
       - redis_data:/data
 ###> doctrine/doctrine-bundle ###
   database:
+    cpus: 2.0
     image: docker.io/mariadb:11.5
     environment:
       MYSQL_ROOT_PASSWORD: ''
@@ -69,6 +76,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    mem_limit: 2g
     ports:
       - "8306:3306"
     volumes:
