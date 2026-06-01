@@ -14,7 +14,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(columns: ['correlation_id'], name: 'idx_sync_logs_correlation_id')]
 #[ORM\Index(columns: ['status'], name: 'idx_sync_logs_status')]
 #[ORM\Index(columns: ['created_at'], name: 'idx_sync_logs_created_at')]
-final class SyncLog
+class SyncLog
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
