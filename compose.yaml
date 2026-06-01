@@ -3,6 +3,8 @@ services:
   web:
     build:
       dockerfile: ./Dockerfile
+    command:
+      - apache2-foreground
     depends_on:
       redis:
         condition: service_healthy
