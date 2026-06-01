@@ -18,6 +18,8 @@ use Symfony\Contracts\Cache\ItemInterface;
 final class RepositoryQueryBuilder
 {
     private const VALID_SORT_FIELDS = ['stars', 'created_at', 'pushed_at', 'name'];
+    private const SCOPED_COUNT_TTL_SECONDS = 60;
+    private const SCOPED_IDS_TTL_SECONDS = 3600;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -161,7 +163,7 @@ final class RepositoryQueryBuilder
             );
 
             return $this->cache->get($cacheKey, function (ItemInterface $item) use ($search, $scope, $repositoryIds): int {
-                $item->expiresAfter(60);
+                $item->expiresAfter(self::SCOPED_COUNT_TTL_SECONDS);
 
                 return $this->executeCountQuery($search, $scope, $repositoryIds);
             });
@@ -316,7 +318,7 @@ final class RepositoryQueryBuilder
         /** @var list<string> $repositoryIds */
         $repositoryIds = $this->cache->get($cacheKey, function (ItemInterface $item) use ($scope, $maxRepositories, &$cacheMiss, &$timings): array {
             $cacheMiss = true;
-            $item->expiresAfter(60);
+            $item->expiresAfter(self::SCOPED_IDS_TTL_SECONDS);
             $queryBuildStartedAt = microtime(true);
 
             $qb = $this->entityManager->createQueryBuilder()
