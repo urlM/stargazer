@@ -41,6 +41,39 @@ Optional verification:
 - Run a single test file:
   - `docker compose exec web php bin/phpunit tests/Functional/RepositoryDetailWorkflowTest.php`
 
+## Local Performance Baseline
+For a local Windows machine with 16 GB RAM, use this Docker Desktop baseline before comparing pagination timings:
+- Memory: `6-8 GB`
+- CPUs: `4`
+- Swap: leave enabled
+
+Notes:
+- Warm-request comparisons are the default signal for pagination changes.
+- Cold requests are still useful, but they include cache/proxy generation and more Docker filesystem noise.
+- Docker-on-Windows bind mount overhead can still dominate total request time even after app-level optimizations.
+
+### Standard local timing workflow
+1. Enable timing headers locally by setting `STARGAZER_TIMING=1`.
+2. Restart or recreate the web container if needed so the env change is active.
+3. Use these standard URLs:
+   - Broad scope: `http://localhost:8080/?star_range=all&max_repositories=5000&sort=stars&page=2`
+   - Narrow scope: `http://localhost:8080/?star_range=100_999&max_repositories=500&sort=stars&page=2`
+4. For each URL, capture:
+   - One cold request after `docker compose exec web php bin/console cache:clear --env=prod --no-warmup`
+   - Two or three warm requests immediately after
+5. Compare these headers:
+   - `X-Stargazer-Controller-Ms`
+   - `X-Stargazer-Resolve-Scope-Ids-Ms`
+   - `X-Stargazer-Total-Ms`
+   - `X-Stargazer-Scoped-Ids-Cache-Hit`
+   - `X-Stargazer-Scoped-Ids-Total-Ms`
+
+Always record the local environment with each result set:
+- Docker Desktop memory allocation
+- Docker Desktop CPU allocation
+- whether the request is cold or warm
+- which pagination URL was measured
+
 ## GitHub Token Configuration (`GITHUB_TOKEN`)
 The refresh flow reads `GITHUB_TOKEN` from environment config.
 
