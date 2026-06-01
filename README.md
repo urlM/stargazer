@@ -74,6 +74,10 @@ Always record the local environment with each result set:
 - whether the request is cold or warm
 - which pagination URL was measured
 
+Helper command:
+- `powershell -ExecutionPolicy Bypass -File .\scripts\measure-pagination.ps1`
+- Optional warm-run count override: `powershell -ExecutionPolicy Bypass -File .\scripts\measure-pagination.ps1 -WarmRuns 3`
+
 ## GitHub Token Configuration (`GITHUB_TOKEN`)
 The refresh flow reads `GITHUB_TOKEN` from environment config.
 
